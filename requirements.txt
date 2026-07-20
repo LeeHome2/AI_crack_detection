@@ -2,13 +2,14 @@
 # (이미 설치된 torch/ultralytics는 기존 venv 유지)
 streamlit>=1.36
 ultralytics>=8.4
-opencv-python>=4.9
+opencv-python>=4.9        # 배포(서버)용 Docker에선 opencv-python-headless 권장
 numpy
 scikit-image>=0.22        # 스켈레톤화 (features.py)
 
 # RAG (knowledge/build_index.py, rag.py)
 chromadb>=0.5
-sentence-transformers>=3.0   # BGE-m3 임베딩
+requests>=2.31            # Solar(Upstage) 임베딩 API 호출 (EMBED_PROVIDER=solar, 기본)
+# sentence-transformers>=3.0   # 로컬 BGE-m3 폴백. EMBED_PROVIDER=bge 일 때만 필요(무거움)
 
 # 보고서 생성 (report.py)
 anthropic>=0.40
