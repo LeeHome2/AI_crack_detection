@@ -7,11 +7,20 @@ venv/
 __pycache__/
 *.pyc
 
+# 비밀정보: .env 는 이미지에 굽지 않고 런타임(compose env_file)으로만 주입 (.env.example 은 포함)
+.env
+.env.*
+!.env.example
+
 # 대용량 데이터셋·테스트 이미지 (이미지에 불필요)
 dataset/
 dataset_tiled*/
 Mobile Devices/
 test_images/
+
+# 참조용 외부 레포/실험 폴더 (런타임 불필요, 이미지 1.3GB↓)
+YOLOv8-crack-seg/
+yolov8-crack-detection/
 
 # RAG 인덱스는 최초 기동 시 볼륨에 생성 (이미지에 포함 안 함)
 knowledge/chroma/
