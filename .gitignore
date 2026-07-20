@@ -1,0 +1,40 @@
+# === 가상환경 ===
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# === 대용량 데이터셋 (재생성/재다운로드) ===
+dataset/
+dataset_tiled*/
+Mobile Devices/
+test_images/
+
+# === 학습 산출물 (best.pt만 별도 강제 포함) ===
+runs/
+
+# === 공개 사전학습 모델 폴더 (외부 저장소·대용량) ===
+YOLOv8-crack-seg/
+yolov8-crack-detection/
+
+# === RAG 인덱스 (build_index.py로 재생성) ===
+knowledge/chroma/
+
+# === 다운로드된 사전학습 가중치 (루트) ===
+/yolov8s.pt
+/yolo26n.pt
+
+# === 비밀키 (절대 커밋 금지) ===
+.env
+key/
+*PAT*
+*token*
+*secret*
+
+# === 기타 ===
+*.zip
+*.pdf
+*.jpg
+*.jpeg
+*.png
+.DS_Store
