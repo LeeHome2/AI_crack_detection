@@ -12,10 +12,13 @@ RAG 지식베이스 구축 (knowledge/build_index.py)
 import os
 import sys
 import glob
-import config
 
-# pipeline 패키지의 embedder 사용 (프로젝트 루트를 경로에 추가)
-sys.path.insert(0, config.BASE_DIR)
+# 스크립트를 직접 실행(python knowledge/build_index.py)해도 루트 모듈(config)과
+# 패키지(pipeline)를 찾도록 프로젝트 루트를 경로에 추가.
+# ※ 반드시 `import config` 前에 실행해야 함 (config.BASE_DIR로 계산하면 순환 → 직접 계산)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import config
 from pipeline import embedder
 
 RAW_DIR = os.path.join(config.BASE_DIR, "knowledge", "raw")
