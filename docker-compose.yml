@@ -1,0 +1,34 @@
+# AI 균열 안전점검 시스템 — 서버 배포용 compose (단일 서비스)
+# 로컬:  docker compose up -d --build
+# 서버:  CD가 .env(APP_IMAGE=ghcr.io/...:sha-xxxx)를 생성 후 docker compose up -d
+name: crack
+
+services:
+  crack-app:
+    image: ${APP_IMAGE:-crack:local}      # CD는 GHCR 이미지 태그로 주입
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crack-app
+    restart: unless-stopped
+    env_file:
+      - path: .env                         # UPSTAGE_API_KEY, ANTHROPIC_API_KEY 등
+        required: false
+    environment:
+      EMBED_PROVIDER: ${EMBED_PROVIDER:-solar}
+      SERVICE_PORT: ${SERVICE_PORT:-8501}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-5}
+      RAG_MATCH_MIN_SCORE: ${RAG_MATCH_MIN_SCORE:-0.55}
+    ports:
+      - "${SERVICE_PORT:-8501}:8501"
+    volumes:
+      - crack_chroma:/app/knowledge/chroma   # RAG 인덱스 영속 (재배포에도 유지)
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8501/_stcore/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+volumes:
+  crack_chroma:

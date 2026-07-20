@@ -1,0 +1,14 @@
+# Streamlit 서버 설정 (배포용)
+[server]
+headless = true
+address = "0.0.0.0"
+port = 8501
+maxUploadSize = 50          # 고해상도 폰 사진 업로드 대비 (MB)
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"

@@ -1,15 +1,16 @@
 """
 [4] RAG 기준 검색 (rag.py)
-- ChromaDB + 한국어 임베딩에서 안전기준 근거 문장 top-k 검색
+- ChromaDB에서 안전기준 근거 문장 top-k 검색. 쿼리 임베딩은 embedder.embed_query 사용
+  (인덱스 문서는 embed_passages, 쿼리는 embed_query — 동일 벡터공간 보장)
 - 출력은 '점수'가 아니라 '근거 문장'
 - 아직 knowledge/build_index.py 로 인덱스를 안 만들었으면 빈 결과 반환(앱에서 안내)
 """
 import os
 import config
+from pipeline import embedder
 from schemas import CrackFeatures, RiskResult, RagResult, Evidence
 
 _collection = None
-_embedder = None
 
 
 def is_ready():
@@ -28,15 +29,6 @@ def _load():
     return _collection
 
 
-def _load_embedder():
-    """쿼리를 인덱스와 동일한 BGE-m3로 임베딩 (공간 일치 필수)."""
-    global _embedder
-    if _embedder is None:
-        from sentence_transformers import SentenceTransformer
-        _embedder = SentenceTransformer(config.EMBED_MODEL)
-    return _embedder
-
-
 def _build_query(feat: CrackFeatures, risk: RiskResult) -> str:
     """feature/등급에서 검색 쿼리 생성."""
     parts = ["콘크리트 균열 안전점검 기준"]
@@ -52,7 +44,7 @@ def search(feat: CrackFeatures, risk: RiskResult) -> RagResult:
     if col is None:
         return RagResult()   # 인덱스 미구축 -> 빈 결과
     q = _build_query(feat, risk)
-    q_emb = _load_embedder().encode([q]).tolist()   # 인덱스와 동일 임베딩으로 쿼리
+    q_emb = [embedder.embed_query(q)]   # 쿼리 = query 임베딩 (인덱스 passage와 동일 공간)
     res = col.query(query_embeddings=q_emb, n_results=config.RAG_TOP_K)
     out = RagResult()
     docs = res.get("documents", [[]])[0]
