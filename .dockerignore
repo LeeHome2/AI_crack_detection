@@ -1,0 +1,32 @@
+# 빌드 컨텍스트에서 제외 (이미지 경량화·빌드 가속)
+.git
+.gitattributes
+.github
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# 대용량 데이터셋·테스트 이미지 (이미지에 불필요)
+dataset/
+dataset_tiled*/
+Mobile Devices/
+test_images/
+
+# RAG 인덱스는 최초 기동 시 볼륨에 생성 (이미지에 포함 안 함)
+knowledge/chroma/
+
+# 문서·산출물 (런타임 불필요)
+*.docx
+*.pdf
+*.zip
+*.svg
+배포_CD_설계_가이드.md
+앱_아키텍처_설계.md
+균열탐지_진단정리_2차멘토링.md
+보고서_샘플.md
+
+# 학습 산출물: best.pt(가중치)만 포함, 나머지 runs/ 는 제외
+# (buildkit은 무시된 디렉토리 안의 파일 재포함을 지원)
+runs/**
+!runs/**/best.pt
