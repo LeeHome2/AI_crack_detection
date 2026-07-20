@@ -32,10 +32,23 @@ GRADE_BINS = [(0, 39, "정상"), (40, 69, "주의"), (70, 89, "위험"), (90, 99
 CHROMA_DIR = os.path.join(BASE_DIR, "knowledge", "chroma")
 EMBED_MODEL = "BAAI/bge-m3"   # 한국어 지원 오픈소스 임베딩
 RAG_TOP_K = 3
+# RAG는 관련도와 무관하게 항상 top-k를 반환하므로, Rule 가점은 유사도 임계값 이상일 때만.
+# (임계값 미설정 시 모든 사진이 +20을 받아 폰 테스트 계단식 보정이 깨짐)
+# BGE-m3 코사인 유사도(=1-거리) 기준. build_index 후 관측된 분포로 재보정 가능.
+RAG_MATCH_MIN_SCORE = 0.55
 
 # ---- 보고서 생성 (Claude API) ----
-ANTHROPIC_MODEL = "claude-sonnet-5"
+# ※ 실제 사용 가능한 모델 ID로 교체 필요 (예: claude-sonnet-4-5-20250929 등).
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-5")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+# 자가진단 등급(정상/주의/위험/긴급) → 현업 상태평가등급(A~E) 참고 매핑
+STATE_GRADE_MAP = {
+    "정상": "A~B등급 (양호)",
+    "주의": "C등급 (보통)",
+    "위험": "D등급 (미흡)",
+    "긴급": "E등급 (불량)",
+}
 
 # ---- 모델 성능 지표 (학습 결과, 화면 표시용) ----
 MODEL_METRICS = {"mAP50": 0.179, "mAP50_95": 0.062, "precision": 0.285, "recall": 0.242}
