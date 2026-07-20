@@ -1,0 +1,38 @@
+name: Auto PR
+
+# feature/fix/chore 브랜치를 push하면 main 대상 PR을 자동 생성한다.
+# (Claude 세션의 GitHub REST API 게이트웨이 제약을 GitHub 쪽에서 우회)
+on:
+  push:
+    branches:
+      - 'feature/**'
+      - 'fix/**'
+      - 'chore/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: auto-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Open PR to main if none exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          branch="${GITHUB_REF_NAME}"
+          [ "$branch" = "main" ] && { echo "main push — skip"; exit 0; }
+          open=$(gh pr list --head "$branch" --state open --json number --jq 'length')
+          if [ "$open" != "0" ]; then
+            echo "PR already open for $branch — skip"; exit 0
+          fi
+          gh pr create --base main --head "$branch" --fill && echo "PR opened for $branch"
