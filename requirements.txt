@@ -1,0 +1,14 @@
+# 균열 안전점검 앱 의존성
+# (이미 설치된 torch/ultralytics는 기존 venv 유지)
+streamlit>=1.36
+ultralytics>=8.4
+opencv-python>=4.9
+numpy
+scikit-image>=0.22        # 스켈레톤화 (features.py)
+
+# RAG (knowledge/build_index.py, rag.py)
+chromadb>=0.5
+sentence-transformers>=3.0   # BGE-m3 임베딩
+
+# 보고서 생성 (report.py)
+anthropic>=0.40

@@ -1,0 +1,101 @@
+<svg viewBox="0 0 980 1240" xmlns="http://www.w3.org/2000/svg" font-family="'Malgun Gothic','Apple SD Gothic Neo',sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#475569"/>
+    </marker>
+    <style>
+      .box{rx:12;ry:12;stroke-width:2;}
+      .t{fill:#fff;font-weight:700;}
+      .sub{fill:#e5e7eb;font-weight:400;}
+      .lab{fill:#334155;font-weight:700;}
+      .flow{stroke:#475569;stroke-width:2.5;fill:none;marker-end:url(#arrow);}
+      .tag{fill:#64748b;font-weight:400;}
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="980" height="1240" fill="#f8fafc"/>
+  <text x="490" y="42" text-anchor="middle" font-size="26" fill="#0f172a" font-weight="800">AI 시설물 균열 안전점검 시스템 — 아키텍처</text>
+  <text x="490" y="70" text-anchor="middle" font-size="14" fill="#64748b">Streamlit · YOLOv8 타일추론 · OpenCV · RAG(ChromaDB) · Rule Engine · Claude API</text>
+
+  <!-- [1] 업로드 -->
+  <rect class="box" x="340" y="100" width="300" height="66" fill="#3b82f6" stroke="#2563eb"/>
+  <text class="t" x="490" y="130" text-anchor="middle" font-size="17">[1] 사진 업로드</text>
+  <text class="sub" x="490" y="151" text-anchor="middle" font-size="12.5">Streamlit · 고해상도 1장</text>
+  <path class="flow" d="M490,166 L490,196"/>
+
+  <!-- [2] 탐지 -->
+  <rect class="box" x="315" y="198" width="350" height="72" fill="#7c3aed" stroke="#6d28d9"/>
+  <text class="t" x="490" y="228" text-anchor="middle" font-size="17">[2] Vision AI — 균열 탐지</text>
+  <text class="sub" x="490" y="250" text-anchor="middle" font-size="12.5">YOLOv8s 타일 학습본 · 타일 슬라이스 추론 · NMS 병합</text>
+  <text class="tag" x="675" y="242" font-size="11">detector.py</text>
+  <path class="flow" d="M490,270 L490,300"/>
+
+  <!-- [3] feature -->
+  <rect class="box" x="315" y="302" width="350" height="72" fill="#0891b2" stroke="#0e7490"/>
+  <text class="t" x="490" y="332" text-anchor="middle" font-size="17">[3] Feature 추출</text>
+  <text class="sub" x="490" y="354" text-anchor="middle" font-size="12.5">OpenCV 이진화→스켈레톤→중심선 (개수·길이·폭)</text>
+  <text class="tag" x="675" y="346" font-size="11">features.py</text>
+
+  <!-- split -->
+  <path class="flow" d="M400,374 L400,398 L250,398 L250,428"/>
+  <path class="flow" d="M580,374 L580,398 L730,398 L730,428"/>
+
+  <!-- [4] RAG (left) -->
+  <rect class="box" x="90" y="430" width="320" height="96" fill="#059669" stroke="#047857"/>
+  <text class="t" x="250" y="460" text-anchor="middle" font-size="17">[4] RAG 기준 검색</text>
+  <text class="sub" x="250" y="482" text-anchor="middle" font-size="12.5">ChromaDB + 한국어 임베딩</text>
+  <text class="sub" x="250" y="501" text-anchor="middle" font-size="12.5">안전기준 문서 → 근거 문장 top-k</text>
+  <text class="sub" x="250" y="519" text-anchor="middle" font-size="11.5" fill="#bbf7d0">출력 = 점수 아님, "근거 문장"</text>
+  <text class="tag" x="330" y="449" font-size="11" fill="#d1fae5">rag.py</text>
+
+  <!-- [5] Rule (right) -->
+  <rect class="box" x="570" y="430" width="320" height="96" fill="#d97706" stroke="#b45309"/>
+  <text class="t" x="730" y="460" text-anchor="middle" font-size="17">[5] Rule 위험도 산정</text>
+  <text class="sub" x="730" y="482" text-anchor="middle" font-size="12.5">순수 파이썬 · 신뢰도·개수 기반</text>
+  <text class="sub" x="730" y="501" text-anchor="middle" font-size="12.5">점수 → 등급 + 기여 내역</text>
+  <text class="sub" x="730" y="519" text-anchor="middle" font-size="11.5" fill="#fde68a">최종 점수는 항상 Rule이 매김</text>
+  <text class="tag" x="812" y="449" font-size="11" fill="#fef3c7">rules.py</text>
+
+  <!-- RAG->Rule 신호 (긴급기준 매칭) -->
+  <path d="M410,478 L560,478" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5,4" fill="none" marker-end="url(#arrow)"/>
+  <text x="485" y="470" text-anchor="middle" font-size="10.5" fill="#64748b">긴급기준 매칭 신호</text>
+
+  <!-- merge -->
+  <path class="flow" d="M250,526 L250,556 L490,556 L490,586"/>
+  <path class="flow" d="M730,526 L730,556 L490,556"/>
+
+  <!-- [6] report -->
+  <rect class="box" x="305" y="588" width="370" height="72" fill="#d9603f" stroke="#c2410c"/>
+  <text class="t" x="490" y="618" text-anchor="middle" font-size="17">[6] LLM 보고서 생성</text>
+  <text class="sub" x="490" y="640" text-anchor="middle" font-size="12.5">Claude API (claude-sonnet-5) · 비전문가용 서술 + 조치권고</text>
+  <text class="tag" x="685" y="632" font-size="11">report.py</text>
+  <path class="flow" d="M490,660 L490,690"/>
+
+  <!-- [7] 결과화면 -->
+  <rect class="box" x="250" y="692" width="480" height="96" fill="#3b82f6" stroke="#2563eb"/>
+  <text class="t" x="490" y="722" text-anchor="middle" font-size="17">[7] 결과 화면 (Streamlit)</text>
+  <text class="sub" x="490" y="744" text-anchor="middle" font-size="12.5">탐지 이미지 · 위험도 등급 · 지표(F1/mAP)</text>
+  <text class="sub" x="490" y="763" text-anchor="middle" font-size="12.5">RAG 근거 문장 · 보고서 초안 · PDF 다운로드</text>
+
+  <!-- 처리 위치 범례 -->
+  <rect x="90" y="840" width="800" height="150" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="110" y="872" font-size="15" fill="#0f172a" font-weight="800">처리 위치 &amp; 설계 원칙</text>
+
+  <circle cx="120" cy="902" r="6" fill="#16a34a"/>
+  <text x="135" y="907" font-size="13" fill="#334155"><tspan font-weight="700">로컬 처리</tspan> : YOLO 추론 · OpenCV · 임베딩(오픈소스) · ChromaDB · Rule — API 비용 0</text>
+
+  <circle cx="120" cy="932" r="6" fill="#d9603f"/>
+  <text x="135" y="937" font-size="13" fill="#334155"><tspan font-weight="700">외부 API 1회</tspan> : 보고서 생성만 Claude 호출 → 비용·의존성 최소, 오프라인 시 목업 대체</text>
+
+  <circle cx="120" cy="962" r="6" fill="#64748b"/>
+  <text x="135" y="967" font-size="13" fill="#334155"><tspan font-weight="700">역할 분리</tspan> : RAG=근거 문장 / Rule=점수·등급 / LLM=서술 — 점수는 코드(Rule)만 결정</text>
+
+  <!-- 범위 표기 -->
+  <rect x="90" y="1010" width="800" height="180" rx="12" fill="#fff7ed" stroke="#fdba74" stroke-width="1.5"/>
+  <text x="110" y="1042" font-size="15" fill="#9a3412" font-weight="800">구현 범위 (핸드오프 확정)</text>
+  <text x="110" y="1072" font-size="13" fill="#7c2d12">· 균열(ConcreteCrack) 단일 클래스만 — 철근노출·누수·현장위험 범위 외</text>
+  <text x="110" y="1098" font-size="13" fill="#7c2d12">· mm 절대측정 안 함 → 픽셀 상대값 (참조객체 없이는 불가)</text>
+  <text x="110" y="1124" font-size="13" fill="#7c2d12">· 시설물 종(1·2·3종) 자동분류 안 함 · 건물 식별 불가(개인정보)</text>
+  <text x="110" y="1150" font-size="13" fill="#7c2d12">· 검증된 근거: 타일링으로 mAP50 0.118 → 0.179 (+52%), 전 지표 상승</text>
+  <text x="110" y="1176" font-size="12.5" fill="#9a3412" font-style="italic">우선순위: detector → features → rules → (app) MVP · 이후 RAG·보고서 얹기</text>
+</svg>
