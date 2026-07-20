@@ -24,15 +24,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Open PR to main if none exists
+      - name: Open PR to main if needed
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           branch="${GITHUB_REF_NAME}"
           [ "$branch" = "main" ] && { echo "main push — skip"; exit 0; }
+
+          # 이미 main에 반영돼 새 커밋이 없으면 조용히 스킵 (머지/force-push 후 헛실패 방지)
+          git fetch origin main --depth=1 -q
+          ahead=$(git rev-list --count origin/main..HEAD)
+          if [ "$ahead" -eq 0 ]; then
+            echo "no commits ahead of main — skip"; exit 0
+          fi
+
+          # 이미 열린 PR이 있으면 스킵 (중복 방지)
           open=$(gh pr list --head "$branch" --state open --json number --jq 'length')
           if [ "$open" != "0" ]; then
             echo "PR already open for $branch — skip"; exit 0
           fi
+
           gh pr create --base main --head "$branch" --fill && echo "PR opened for $branch"
