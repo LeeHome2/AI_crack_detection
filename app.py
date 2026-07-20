@@ -92,11 +92,17 @@ if rag_res.evidences:
 else:
     st.info("RAG 지식베이스가 아직 구축되지 않았습니다. knowledge/build_index.py 실행 후 표시됩니다.")
 
-# ---- 보고서 초안 ----
+# ---- 보고서 초안 (현업 6섹션 서식) ----
 st.subheader("📝 점검 보고서 초안")
 if not config.ANTHROPIC_API_KEY:
     st.caption("※ API 키 미설정 → 템플릿 목업으로 표시됩니다.")
-st.markdown(f"**요약**  \n{rep.summary}")
-st.markdown(f"**위험도 설명**  \n{rep.risk_explain}")
-st.markdown(f"**권고 조치**  \n{rep.actions}")
-st.markdown(f"**전문점검 권고**  \n{rep.inspection_advice}")
+report_md = rep.to_markdown()
+for _title, _attr in rep.SECTIONS:
+    st.markdown(f"### {_title}")
+    st.markdown(getattr(rep, _attr))
+st.download_button(
+    "📄 보고서 초안 내려받기 (.md)",
+    data=report_md,
+    file_name="균열_안전점검_결과보고서_초안.md",
+    mime="text/markdown",
+)

@@ -50,12 +50,16 @@ def evaluate(feat: CrackFeatures, rag: RagResult = None) -> RiskResult:
                          "detail": f"최장 길이비 {feat.max_length_ratio:.2f} ≥ {config.RULE_LENGTH_HIGH}",
                          "points": 15})
 
-    # RAG 긴급기준 매칭 (근거 문서가 검색되면 신호로만 반영)
+    # RAG 긴급기준 매칭 — ChromaDB는 관련도와 무관하게 항상 top-k를 반환하므로
+    # '근거가 있으면 무조건 +20'이면 모든 사진이 가점을 받아 계단식 보정이 깨진다.
+    # → 유사도(RAG_MATCH_MIN_SCORE) 이상인 '관련성 높은' 근거가 있을 때만 가점.
     if rag and rag.evidences:
-        score += 20
-        contribs.append({"rule": "RAG 긴급기준 매칭",
-                         "detail": f"안전기준 근거 {len(rag.evidences)}건 검색됨",
-                         "points": 20})
+        strong = [e for e in rag.evidences if e.score >= config.RAG_MATCH_MIN_SCORE]
+        if strong:
+            score += 20
+            contribs.append({"rule": "RAG 긴급기준 매칭",
+                             "detail": f"유사도 {config.RAG_MATCH_MIN_SCORE}+ 근거 {len(strong)}건 검색됨",
+                             "points": 20})
 
     # (확장 예정) 철근노출 +30 / 누수 +10 — 범위 외
 
