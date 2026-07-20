@@ -49,9 +49,11 @@ EMBED_MODEL = "BAAI/bge-m3"   # 한국어 지원 오픈소스 임베딩
 
 # RAG는 관련도와 무관하게 항상 top-k를 반환하므로, Rule 가점은 유사도 임계값 이상일 때만.
 # (임계값 미설정 시 모든 사진이 +20을 받아 폰 테스트 계단식 보정이 깨짐)
-# 코사인 유사도(=1-거리) 기준. 실제 임베더(Solar/BGE)로 인덱스 만든 뒤 분포 보고 재보정.
-# ※ Solar와 BGE는 유사도 스케일이 다르므로 임베더 바꾸면 이 값도 재확인 필요.
-RAG_MATCH_MIN_SCORE = float(os.environ.get("RAG_MATCH_MIN_SCORE", "0.55"))
+# 점수(=1-거리) 기준.
+# ※ Solar 실측 재보정: 관련 근거가 ~0.20~0.25 로 분포 → 0.55면 대부분 필터링돼 RAG가
+#    사실상 꺼짐. 그래서 Solar 분포에 맞춰 기본값 0.20 으로 낮춤.
+#    (임베더/문서 데이터가 바뀌면 분포 재관측 후 env RAG_MATCH_MIN_SCORE 로 조정)
+RAG_MATCH_MIN_SCORE = float(os.environ.get("RAG_MATCH_MIN_SCORE", "0.20"))
 
 # ---- 보고서 생성 (Claude API) ----
 # ※ 실제 사용 가능한 모델 ID로 교체 필요 (예: claude-sonnet-4-5-20250929 등).
