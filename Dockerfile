@@ -27,14 +27,17 @@ RUN pip install --upgrade pip \
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-# 앱 소스 + 학습 가중치(best.pt) 복사
-COPY . .
+# 비루트 사용자 먼저 생성 (보안)
+RUN useradd --system --create-home --home-dir /home/crack crack
 
+# 앱 소스 + 학습 가중치(best.pt) 복사
+# COPY 시점에 소유권을 지정해 별도 `chown -R /app`(전체 레이어 복제 → +1.5GB)을 피함
+COPY --chown=crack:crack . .
+
+# RAG 인덱스는 런타임에 crack 유저가 이 디렉터리에 생성 (볼륨 마운트 지점)
 RUN chmod +x entrypoint.sh \
-    # 비루트 사용자로 실행 (보안)
-    && useradd --system --create-home --home-dir /home/crack crack \
     && mkdir -p /app/knowledge/chroma \
-    && chown -R crack:crack /app
+    && chown -R crack:crack /app/knowledge/chroma
 
 USER crack
 
