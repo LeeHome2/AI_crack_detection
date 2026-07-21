@@ -54,16 +54,27 @@ with st.sidebar:
     st.metric("mAP50", m["mAP50"])
     st.metric("Recall", m["recall"])
 
-# ---- 1) 입력: 촬영 또는 업로드 (모바일 대응) ----
+# ---- 1) 입력: 업로드(기본) 또는 촬영 (모바일 대응) ----
+# 기본은 '사진 선택'. 촬영은 버튼을 눌러야 카메라가 켜짐(진입 즉시 카메라 안 열림).
 st.subheader("1) 균열 사진 입력")
-mode = st.radio("입력 방식", ["📷 촬영", "🖼️ 사진 선택"],
-                horizontal=True, label_visibility="collapsed")
-if mode == "📷 촬영":
-    up = st.camera_input("균열 부위를 가까이서 촬영하세요")
-    st.caption("※ 폰 카메라는 HTTPS 접속에서만 열립니다. 원거리·고해상도는 '사진 선택'을 권장합니다.")
-else:
+mode = st.radio("입력 방식", ["🖼️ 사진 선택", "📷 촬영"],
+                horizontal=True, label_visibility="collapsed")   # 첫 항목=기본값
+up = None
+if mode == "🖼️ 사진 선택":
     up = st.file_uploader("균열 사진 업로드 (원본 고해상도 권장)",
                           type=["jpg", "jpeg", "png"])
+else:
+    # 카메라는 '켜기' 버튼을 눌러야 활성화 (원치 않는 자동 실행 방지)
+    if not st.session_state.get("cam_on"):
+        st.caption("※ 폰 카메라는 HTTPS 접속에서만 열립니다. 원거리·고해상도는 '사진 선택'을 권장합니다.")
+        if st.button("📷 카메라 켜기", use_container_width=True):
+            st.session_state["cam_on"] = True
+            st.rerun()
+    else:
+        up = st.camera_input("균열 부위를 가까이서 촬영하세요")
+        if st.button("카메라 끄기", use_container_width=True):
+            st.session_state["cam_on"] = False
+            st.rerun()
 
 if up is None:
     st.info("사진을 촬영하거나 업로드하면 분석이 시작됩니다.")
