@@ -70,10 +70,18 @@ try:
 except ValueError:
     RAG_MATCH_MIN_SCORE = 0.20
 
-# ---- 보고서 생성 (Claude API) ----
-# ※ 실제 사용 가능한 모델 ID로 교체 필요 (예: claude-sonnet-4-5-20250929 등).
+# ---- 보고서 생성 (LLM) ----
+# 제공자 체인: claude(ANTHROPIC 키) → solar(UPSTAGE 키) → mock. auto면 사용 가능한 걸 자동 선택.
+REPORT_PROVIDER = _env("REPORT_PROVIDER", "auto")   # auto | claude | solar | mock
+
+# Claude (Anthropic). ※ 실제 사용 가능한 모델 ID로 교체 (예: claude-sonnet-4-5-20250929 등).
 ANTHROPIC_MODEL = _env("ANTHROPIC_MODEL", "claude-sonnet-4-5") or "claude-sonnet-4-5"
 ANTHROPIC_API_KEY = _env("ANTHROPIC_API_KEY")
+
+# Solar (Upstage) 채팅 — 보고서 LLM 폴백. OpenAI 호환. UPSTAGE_API_KEY 재사용(임베딩과 동일 키).
+# ※ 엔드포인트·모델명은 Upstage 콘솔 기준으로 env 조정 가능 (모델 예: solar-pro2 / solar-pro).
+SOLAR_CHAT_ENDPOINT = _env("SOLAR_CHAT_ENDPOINT", "https://api.upstage.ai/v1/solar/chat/completions")
+SOLAR_CHAT_MODEL = _env("SOLAR_CHAT_MODEL", "solar-pro2")
 
 # 자가진단 등급(정상/주의/위험/긴급) → 현업 상태평가등급(A~E) 참고 매핑
 STATE_GRADE_MAP = {
