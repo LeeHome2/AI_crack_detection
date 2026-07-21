@@ -9,7 +9,7 @@
 """
 import hashlib
 
-from pipeline import detector, features, rules, rag, report
+from pipeline import detector, features, rules, rag, report, postprocess
 from schemas import AgentState, Stage
 
 
@@ -24,7 +24,12 @@ def analyze(img_bgr, image_hash_str: str = "") -> AgentState:
     """
     state = AgentState(stage=Stage.AWAIT_IMAGE, image_hash=image_hash_str)
     state.detect = detector.detect(img_bgr)
+    # 후처리: 이음새(타일 줄눈 등) 오탐 박스 제거 → 이후 특징·위험도·근거·보고서에 반영
+    state.detect = postprocess.filter_seams(img_bgr, state.detect)
+
     state.features = features.extract(img_bgr, state.detect)
+    # 물리적 균열 개수 보정: 박스 수가 아니라 이어진 균열 덩어리 수 (한 줄이 여러 박스로 쪼개져도 1개)
+    state.features.crack_count = postprocess.physical_crack_count(img_bgr, state.detect)
 
     risk_pre = rules.evaluate(state.features)            # RAG 전 1차 위험도
     state.rag = rag.search(state.features, risk_pre)     # 근거 검색

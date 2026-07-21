@@ -30,6 +30,15 @@ OVERLAP = 0.2
 CONF = 0.15          # 자신감 낮은 모델 기준. 오탐 많으면 0.25로
 IOU_MERGE = 0.5      # 타일 경계 중복 박스 병합(NMS)
 
+# ---- 탐지 후처리 (재학습 없이 이음새 오탐·개수 보정) ----
+# 이음새 필터: 균열 중심선이 '매우 곧은 직선'이면 이음새로 보고 제외 (구불한 균열은 보존).
+#  직선성 = 주축대비 수직편차/길이. 이 값 미만이면 이음새로 간주. 실사진으로 튜닝 필요.
+SEAM_FILTER_ENABLED = _env("SEAM_FILTER_ENABLED", "1") not in ("0", "false", "no", "off")
+try:
+    SEAM_STRAIGHTNESS_MAX = float(_env("SEAM_STRAIGHTNESS_MAX", "0.030") or "0.030")
+except ValueError:
+    SEAM_STRAIGHTNESS_MAX = 0.030
+
 # ---- Rule Engine 임계값 ----
 # ※ 재보정: 이 모델은 신뢰도가 낮게 압축돼 있음(폰 100장 테스트 max 0.36).
 #   기획안의 0.80은 잘 보정된 0~1 신뢰도 가정 → 도달 불가라 실제 분포에 맞춰 계단식으로.
