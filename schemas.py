@@ -8,9 +8,26 @@ from enum import Enum
 
 
 class Stage(str, Enum):
-    """에이전트 진행 단계. (확장 예정: TRIAGE·RETAKE=비전 게이트 / COLLECT·DONE=멀티턴)"""
+    """에이전트 진행 단계. (COLLECT·DONE=멀티턴은 PR-B 예정)"""
     AWAIT_IMAGE = "await_image"
+    NEEDS_RETAKE = "needs_retake"   # 트리아지: 원거리·흐림 → 재촬영 요청(YOLO 안 돌림)
+    REJECTED = "rejected"           # 트리아지: 균열 점검 대상 아님(비콘크리트/무관 사진)
     ANALYZED = "analyzed"
+
+
+@dataclass
+class TriageResult:
+    """[1차 게이트] 사진이 판정 가치가 있는지 + 비전이 읽어낸 메타데이터.
+    같은 비전 호출 1회로 게이트 판정과 보고서용 메타를 함께 받는다(추가 호출 없음).
+    """
+    verdict: str = "ok"        # ok | retake_far | retake_blur | not_crack
+    ok: bool = True            # True면 분석 진행, False면 게이트에서 멈춤
+    message: str = ""          # 사용자 안내(재촬영 사유 등)
+    provider: str = "heuristic"  # claude | heuristic | mock
+    blur_score: float = 0.0    # 라플라시안 분산(낮을수록 흐림)
+    # 비전이 읽어낸 보고서용 메타(값이 없으면 빈 문자열/None) — report 기본현황·점검결과 보강
+    meta: dict = field(default_factory=dict)  # {structure_part, material, orientation,
+    #                                            branching, efflorescence, spalling, notes}
 
 
 @dataclass
@@ -93,6 +110,7 @@ class AgentState:
     """
     stage: str = Stage.AWAIT_IMAGE
     image_hash: str = ""
+    triage: Optional[TriageResult] = None
     detect: Optional[DetectResult] = None
     features: Optional[CrackFeatures] = None
     risk: Optional[RiskResult] = None
