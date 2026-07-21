@@ -183,7 +183,17 @@ def _parse_narrative(text: str) -> dict:
     }
 
 
+def _fill_empty(narr: dict, feat, risk, rag) -> dict:
+    """LLM이 특정 섹션을 비우면 목업으로 보충 (강건성)."""
+    fallback = _mock_narrative(feat, risk, rag)
+    for k, v in narr.items():
+        if not (v or "").strip():
+            narr[k] = fallback[k]
+    return narr
+
+
 def _llm_narrative(feat, risk, rag) -> dict:
+    """Claude (Anthropic) 로 서술 섹션 생성."""
     import anthropic
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     msg = client.messages.create(
@@ -191,26 +201,65 @@ def _llm_narrative(feat, risk, rag) -> dict:
         max_tokens=1800,
         messages=[{"role": "user", "content": _prompt(feat, risk, rag)}],
     )
-    narr = _parse_narrative(msg.content[0].text)
-    # LLM이 특정 섹션을 비우면 목업으로 보충 (강건성)
-    fallback = _mock_narrative(feat, risk, rag)
-    for k, v in narr.items():
-        if not v.strip():
-            narr[k] = fallback[k]
-    return narr
+    return _fill_empty(_parse_narrative(msg.content[0].text), feat, risk, rag)
+
+
+def _solar_available():
+    key = (config.UPSTAGE_API_KEY or "").strip()
+    return bool(key) and key.isascii()
+
+
+def _solar_narrative(feat, risk, rag) -> dict:
+    """Solar (Upstage) 채팅으로 서술 섹션 생성. OpenAI 호환 chat/completions."""
+    import requests
+    resp = requests.post(
+        config.SOLAR_CHAT_ENDPOINT,
+        headers={"Authorization": f"Bearer {config.UPSTAGE_API_KEY}",
+                 "Content-Type": "application/json"},
+        json={
+            "model": config.SOLAR_CHAT_MODEL,
+            "messages": [{"role": "user", "content": _prompt(feat, risk, rag)}],
+            "max_tokens": 1800,
+            "temperature": 0.3,
+        },
+        timeout=40,
+    )
+    resp.raise_for_status()
+    text = resp.json()["choices"][0]["message"]["content"]
+    return _fill_empty(_parse_narrative(text), feat, risk, rag)
+
+
+def active_provider() -> str:
+    """실제로 쓸 보고서 LLM 제공자 결정: claude → solar → mock."""
+    p = config.REPORT_PROVIDER
+    if p in ("claude", "solar", "mock"):
+        return p
+    if _has_api():
+        return "claude"
+    if _solar_available():
+        return "solar"
+    return "mock"
+
+
+def provider_label() -> str:
+    return {"claude": "Claude", "solar": "Solar", "mock": "목업"}.get(active_provider(), "목업")
 
 
 # ────────────────────────────── 진입점 ──────────────────────────────
 def generate(feat: CrackFeatures, risk: RiskResult, rag: RagResult) -> Report:
     """6섹션 보고서 Report 생성. 결정적 섹션은 코드, 서술 섹션은 LLM/목업.
-    LLM 호출이 실패해도(키 오류·네트워크·레이트리밋 등) 앱이 죽지 않게 목업으로 폴백.
+    제공자 체인(claude→solar→mock). LLM 호출 실패해도 목업으로 폴백해 앱이 죽지 않음.
     """
-    if _has_api():
-        try:
+    provider = active_provider()
+    narr = None
+    try:
+        if provider == "claude":
             narr = _llm_narrative(feat, risk, rag)
-        except Exception:
-            narr = _mock_narrative(feat, risk, rag)   # API 오류 → 안전 폴백
-    else:
+        elif provider == "solar":
+            narr = _solar_narrative(feat, risk, rag)
+    except Exception:
+        narr = None                     # LLM 오류 → 목업 폴백
+    if narr is None:
         narr = _mock_narrative(feat, risk, rag)
     return Report(
         basic_info=_basic_info(),

@@ -12,7 +12,7 @@ import cv2
 import streamlit as st
 
 import config
-from pipeline import orchestrator, features, detector, rag
+from pipeline import orchestrator, features, detector, rag, report
 
 GRADE_COLOR = {"정상": "#16a34a", "주의": "#d97706", "위험": "#dc2626", "긴급": "#7f1d1d"}
 
@@ -43,7 +43,8 @@ with st.sidebar:
     st.header("시스템 상태")
     st.write("🟢 탐지 모델" if detector.is_ready() else "🔴 탐지 모델 (가중치 없음)")
     st.write("🟢 RAG 지식베이스" if rag.is_ready() else "🟡 RAG (인덱스 미구축)")
-    st.write("🟢 Claude API" if config.ANTHROPIC_API_KEY else "🟡 보고서 (API 키 없음 → 목업)")
+    _prov = report.provider_label()
+    st.write(f"{'🟢' if _prov != '목업' else '🟡'} 보고서 LLM: {_prov}")
     st.divider()
     st.subheader("모델 성능")
     m = config.MODEL_METRICS
@@ -124,8 +125,8 @@ with st.expander("📚 안전기준 근거 (RAG)", expanded=bool(rag_res.evidenc
 
 # ---- 3) 점검 보고서 초안 (현업 6섹션 서식) ----
 st.subheader("3) 점검 보고서 초안")
-if not config.ANTHROPIC_API_KEY:
-    st.caption("※ API 키 미설정 → 템플릿 목업으로 표시됩니다.")
+_prov = report.provider_label()
+st.caption(f"※ 보고서 LLM: {_prov}" + ("  (LLM 키 없음 → 템플릿 목업)" if _prov == "목업" else ""))
 report_md = rep.to_markdown()
 for _title, _attr in rep.SECTIONS:
     st.markdown(f"#### {_title}")
