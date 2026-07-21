@@ -28,18 +28,50 @@ def _has_api():
 
 
 # ─────────────────────── 결정적 섹션 (코드 조립) ───────────────────────
-def _basic_info() -> str:
-    """1. 시설물 기본현황 — 사용자 입력 자리표시자 + 점검 메타."""
+def _meta_val(meta, key, default="미상"):
+    v = (meta or {}).get(key, "") if isinstance(meta, dict) else ""
+    v = (v or "").strip()
+    return v if v and v != "미상" else default
+
+
+def _basic_info(meta=None) -> str:
+    """1. 시설물 기본현황 — 사용자 입력 자리표시자 + (트리아지 비전 메타) + 점검 메타."""
     today = datetime.date.today().isoformat()
+    part = _meta_val(meta, "structure_part")     # 벽/바닥/기둥/천장/외벽…
+    material = _meta_val(meta, "material")        # 콘크리트/벽돌/타일…
+    struct = "철근콘크리트" if material in ("콘크리트", "미상") else material
     return (
         "| 항목 | 내용 |\n"
         "|---|---|\n"
         "| 시설물명 | (사용자 입력) 예: ○○빌딩 외벽 |\n"
         "| 위치 | (사용자 입력) 예: 서울시 ○○구 |\n"
-        "| 구조형식 | 철근콘크리트 |\n"
+        f"| 점검 부위 | {part} (AI 비전 추정) |\n"
+        f"| 구조형식 | {struct} |\n"
         f"| 점검일자 | {today} |\n"
-        "| 점검방식 | 사진 기반 AI 자가진단 (YOLO 타일 탐지 + OpenCV 형태분석) |"
+        "| 점검방식 | 사진 기반 AI 자가진단 (비전 트리아지 + YOLO 타일 탐지 + OpenCV 형태분석) |"
     )
+
+
+def _meta_observation(meta) -> str:
+    """트리아지 비전이 읽어낸 균열 양상 소견 한 줄 (점검결과 보강). 없으면 빈 문자열."""
+    if not isinstance(meta, dict) or not meta:
+        return ""
+    bits = []
+    o = _meta_val(meta, "orientation", "")
+    if o:
+        bits.append(f"방향 {o}")
+    b = _meta_val(meta, "branching", "")
+    if b and b != "없음":
+        bits.append(f"분기 {b}")
+    if _meta_val(meta, "efflorescence", "") == "있음":
+        bits.append("백태(누수 흔적) 동반")
+    if _meta_val(meta, "spalling", "") == "있음":
+        bits.append("콘크리트 박리 동반")
+    notes = _meta_val(meta, "notes", "")
+    line = ", ".join(bits)
+    if notes:
+        line = (line + " — " + notes) if line else notes
+    return f"\n**AI 비전 육안 소견:** {line}" if line else ""
 
 
 def _evidence_basis(rag: RagResult) -> str:
@@ -68,7 +100,7 @@ def _contrib_line(risk: RiskResult) -> str:
 
 
 # ─────────────────────── 서술 섹션 목업 (API 없을 때) ───────────────────────
-def _mock_inspection_result(feat: CrackFeatures) -> str:
+def _mock_inspection_result(feat: CrackFeatures, meta=None) -> str:
     length_pct = round(feat.max_length_ratio * 100, 1)
     return (
         "업로드된 사진에서 다음과 같은 균열이 탐지되었습니다.\n\n"
@@ -80,6 +112,7 @@ def _mock_inspection_result(feat: CrackFeatures) -> str:
         f"| 평균 균열 폭 (상대) | 픽셀 기준 {feat.avg_width_px}px |\n\n"
         "※ 사진만으로는 실제 mm 단위 폭을 확정할 수 없어 상대값으로 표기합니다. "
         "탐지 이미지(박스 표시)는 첨부 참조."
+        + _meta_observation(meta)
     )
 
 
@@ -111,9 +144,9 @@ def _mock_overall_opinion(feat: CrackFeatures, risk: RiskResult) -> str:
     )
 
 
-def _mock_narrative(feat, risk, rag) -> dict:
+def _mock_narrative(feat, risk, rag, meta=None) -> dict:
     return {
-        "inspection_result": _mock_inspection_result(feat),
+        "inspection_result": _mock_inspection_result(feat, meta),
         "safety_grade": _mock_safety_grade(risk),
         "overall_opinion": _mock_overall_opinion(feat, risk),
     }
@@ -127,7 +160,22 @@ _SEC_TITLES = {
 }
 
 
-def _prompt(feat, risk, rag) -> str:
+def _meta_prompt_block(meta) -> str:
+    """트리아지 비전 메타를 프롬프트에 주입(보이는 사실만, 지어내지 말 것)."""
+    if not isinstance(meta, dict) or not any((v or "").strip() for v in meta.values()):
+        return "- (비전 메타 없음)"
+    keymap = {"structure_part": "부위", "material": "재질", "orientation": "방향",
+              "branching": "분기", "efflorescence": "백태", "spalling": "박리",
+              "notes": "소견"}
+    lines = []
+    for k, label in keymap.items():
+        v = (meta.get(k, "") or "").strip()
+        if v and v != "미상":
+            lines.append(f"- {label}: {v}")
+    return "\n".join(lines) or "- (비전 메타 없음)"
+
+
+def _prompt(feat, risk, rag, meta=None) -> str:
     ev = "\n".join(f"- {e.text} (출처: {e.source})" for e in rag.evidences) \
         or "- (검색된 근거 없음)"
     contribs = "\n".join(
@@ -143,6 +191,9 @@ def _prompt(feat, risk, rag) -> str:
 - 최고 탐지 신뢰도: {feat.max_confidence}
 - 최장 균열 길이 비율(대각선 대비): {feat.max_length_ratio}
 - 평균 균열 폭(px): {feat.avg_width_px}
+
+[AI 비전 육안 관찰(트리아지) — 보이는 사실만, 새로 지어내지 말 것]
+{_meta_prompt_block(meta)}
 
 [위험도(코드 산정, 재계산 금지)]
 - 점수: {risk.score} / 등급: {risk.grade} / 참고 상태평가등급: {state}
@@ -183,25 +234,25 @@ def _parse_narrative(text: str) -> dict:
     }
 
 
-def _fill_empty(narr: dict, feat, risk, rag) -> dict:
+def _fill_empty(narr: dict, feat, risk, rag, meta=None) -> dict:
     """LLM이 특정 섹션을 비우면 목업으로 보충 (강건성)."""
-    fallback = _mock_narrative(feat, risk, rag)
+    fallback = _mock_narrative(feat, risk, rag, meta)
     for k, v in narr.items():
         if not (v or "").strip():
             narr[k] = fallback[k]
     return narr
 
 
-def _llm_narrative(feat, risk, rag) -> dict:
+def _llm_narrative(feat, risk, rag, meta=None) -> dict:
     """Claude (Anthropic) 로 서술 섹션 생성."""
     import anthropic
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     msg = client.messages.create(
         model=config.ANTHROPIC_MODEL,
         max_tokens=1800,
-        messages=[{"role": "user", "content": _prompt(feat, risk, rag)}],
+        messages=[{"role": "user", "content": _prompt(feat, risk, rag, meta)}],
     )
-    return _fill_empty(_parse_narrative(msg.content[0].text), feat, risk, rag)
+    return _fill_empty(_parse_narrative(msg.content[0].text), feat, risk, rag, meta)
 
 
 def _solar_available():
@@ -209,7 +260,7 @@ def _solar_available():
     return bool(key) and key.isascii()
 
 
-def _solar_narrative(feat, risk, rag) -> dict:
+def _solar_narrative(feat, risk, rag, meta=None) -> dict:
     """Solar (Upstage) 채팅으로 서술 섹션 생성. OpenAI 호환 chat/completions."""
     import requests
     resp = requests.post(
@@ -218,7 +269,7 @@ def _solar_narrative(feat, risk, rag) -> dict:
                  "Content-Type": "application/json"},
         json={
             "model": config.SOLAR_CHAT_MODEL,
-            "messages": [{"role": "user", "content": _prompt(feat, risk, rag)}],
+            "messages": [{"role": "user", "content": _prompt(feat, risk, rag, meta)}],
             "max_tokens": 1800,
             "temperature": 0.3,
         },
@@ -226,7 +277,7 @@ def _solar_narrative(feat, risk, rag) -> dict:
     )
     resp.raise_for_status()
     text = resp.json()["choices"][0]["message"]["content"]
-    return _fill_empty(_parse_narrative(text), feat, risk, rag)
+    return _fill_empty(_parse_narrative(text), feat, risk, rag, meta)
 
 
 def active_provider() -> str:
@@ -246,23 +297,24 @@ def provider_label() -> str:
 
 
 # ────────────────────────────── 진입점 ──────────────────────────────
-def generate(feat: CrackFeatures, risk: RiskResult, rag: RagResult) -> Report:
+def generate(feat: CrackFeatures, risk: RiskResult, rag: RagResult, meta=None) -> Report:
     """6섹션 보고서 Report 생성. 결정적 섹션은 코드, 서술 섹션은 LLM/목업.
     제공자 체인(claude→solar→mock). LLM 호출 실패해도 목업으로 폴백해 앱이 죽지 않음.
+    meta: 트리아지 비전이 읽어낸 메타(구조부위·재질·양상) — 기본현황·점검결과 보강용(없어도 됨).
     """
     provider = active_provider()
     narr = None
     try:
         if provider == "claude":
-            narr = _llm_narrative(feat, risk, rag)
+            narr = _llm_narrative(feat, risk, rag, meta)
         elif provider == "solar":
-            narr = _solar_narrative(feat, risk, rag)
+            narr = _solar_narrative(feat, risk, rag, meta)
     except Exception:
         narr = None                     # LLM 오류 → 목업 폴백
     if narr is None:
-        narr = _mock_narrative(feat, risk, rag)
+        narr = _mock_narrative(feat, risk, rag, meta)
     return Report(
-        basic_info=_basic_info(),
+        basic_info=_basic_info(meta),
         inspection_result=narr["inspection_result"],
         safety_grade=narr["safety_grade"],
         overall_opinion=narr["overall_opinion"],

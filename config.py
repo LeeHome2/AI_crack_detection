@@ -92,6 +92,24 @@ ANTHROPIC_API_KEY = _env("ANTHROPIC_API_KEY")
 SOLAR_CHAT_ENDPOINT = _env("SOLAR_CHAT_ENDPOINT", "https://api.upstage.ai/v1/solar/chat/completions")
 SOLAR_CHAT_MODEL = _env("SOLAR_CHAT_MODEL", "solar-pro2")
 
+# ---- [1차] 비전 트리아지 (triage) ----
+# 사진 업로드 시 YOLO 전에 1차 게이트: 근접/원거리/흐림/비균열 판정 + 보고서용 메타 추출.
+# Claude 비전 1회 호출(키 있으면). 키 없거나 실패하면 휴리스틱(흐림만)으로 폴백 → 앱 안 죽음.
+TRIAGE_ENABLED = _env("TRIAGE_ENABLED", "1") not in ("0", "false", "no", "off")
+# 라플라시안 분산(선명도). 이 값 미만이면 '흐림'으로 보고 API 전에 무료로 재촬영 요청.
+#  ※ 해상도·피사체에 따라 분포가 달라 실사진으로 튜닝 필요(기본 보수적으로 낮게).
+try:
+    TRIAGE_BLUR_MIN = float(_env("TRIAGE_BLUR_MIN", "60") or "60")
+except ValueError:
+    TRIAGE_BLUR_MIN = 60.0
+# 비전 호출 전 이미지 긴 변 축소(px). 토큰·비용 절약(판정엔 충분). 0이면 원본.
+try:
+    VISION_MAX_SIDE = int(_env("VISION_MAX_SIDE", "1024") or "1024")
+except ValueError:
+    VISION_MAX_SIDE = 1024
+# 비전 모델은 보고서 LLM과 동일 키·모델 재사용(ANTHROPIC_*). 필요시 별도 지정 가능.
+VISION_MODEL = _env("VISION_MODEL", "") or ANTHROPIC_MODEL
+
 # 자가진단 등급(정상/주의/위험/긴급) → 현업 상태평가등급(A~E) 참고 매핑
 STATE_GRADE_MAP = {
     "정상": "A~B등급 (양호)",
