@@ -1,0 +1,71 @@
+name: CD Deploy
+
+# main 에 머지되면 GCE 에 SSH 로 git pull + 재빌드 배포. (develop 은 배포 안 함 = 실험 라인)
+# GCE Secrets(GCE_HOST/USERNAME/SSH_KEY) 미설정이면 조용히 스킵.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app.py"
+      - "config.py"
+      - "schemas.py"
+      - "pipeline/**"
+      - "knowledge/**"
+      - "requirements.txt"
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "entrypoint.sh"
+      - ".streamlit/**"
+      - ".github/workflows/cd.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: cd-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secrets configured
+        id: cfg
+        env:
+          GCE_HOST: ${{ secrets.GCE_HOST }}
+        run: |
+          if [ -z "${GCE_HOST:-}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::GCE_HOST 미설정 — 배포 스킵 (GCE Secrets 설정 후 자동 활성화)"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy over SSH (git pull + rebuild)
+        if: steps.cfg.outputs.configured == 'true'
+        env:
+          GCE_HOST: ${{ secrets.GCE_HOST }}
+          GCE_USERNAME: ${{ secrets.GCE_USERNAME }}
+          GCE_SSH_KEY: ${{ secrets.GCE_SSH_KEY }}
+          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
+        run: |
+          set -euo pipefail
+          install -m 600 /dev/stdin "$HOME/deploy_key" <<< "$GCE_SSH_KEY"
+          ssh -i "$HOME/deploy_key" -o StrictHostKeyChecking=accept-new \
+            "${GCE_USERNAME}@${GCE_HOST}" \
+            "DEPLOY_DIR='${DEPLOY_DIR:-AI_crack_detection}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$HOME/${DEPLOY_DIR}"
+          echo "[deploy] fetch + reset --hard origin/main"
+          git fetch origin --quiet
+          git checkout main --quiet 2>/dev/null || git checkout -B main origin/main
+          git reset --hard origin/main
+          echo "[deploy] docker compose up -d --build"
+          docker compose up -d --build
+          echo "[deploy] health check"
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8501/_stcore/health >/dev/null 2>&1; then
+              echo "[deploy] healthy ✓"; exit 0
+            fi
+            sleep 3
+          done
+          echo "[deploy] health check 실패"; docker compose ps || true; docker compose logs --tail 40 || true; exit 1
+          REMOTE
