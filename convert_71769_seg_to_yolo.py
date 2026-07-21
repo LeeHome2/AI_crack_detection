@@ -47,12 +47,12 @@ OUT = r"D:\crack_detection\dataset_seg_71769"
 VAL_RATIO = 0.2
 SEED = 0
 
-# 학습에 쓸 클래스만 매핑(균열 중심). 라벨 문자열은 소문자로 비교.
-#   제품이 '균열'이 핵심이라 균열+망상균열만. 면적결함까지 원하면 추가.
+# 71769 개방데이터 실제 클래스(로컬 확인): linear/reticular/complex crack 3종.
+#   (가이드의 10종은 전체 구축 스펙이고, 공개분 라벨은 균열 3종.) 소문자로 비교.
 CLASS_MAP = {
-    "crack": 0,
+    "linear crack": 0,      # 선형균열(대부분 폴리라인=얇은 중심선)
     "reticular crack": 1,   # 망상균열
-    # "spalling": 2, "efflorescence": 3, "detachment": 4, ...  # 필요 시 확장
+    "complex crack": 2,     # 복합균열
 }
 INCLUDE_HARD_NEG = True     # object_included=N(균열 미포함) → 빈 라벨로 포함(precision↑)
 MIN_POLYLINE_PX = 3         # 폴리라인 버퍼 최소 반폭(px). px 라벨이 너무 작을 때 하한.
