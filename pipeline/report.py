@@ -16,7 +16,9 @@ from schemas import CrackFeatures, RiskResult, RagResult, Report
 
 # ────────────────────────────── 준비 판단 ──────────────────────────────
 def _has_api():
-    if not config.ANTHROPIC_API_KEY:
+    key = (config.ANTHROPIC_API_KEY or "").strip()
+    # 빈 값·비ASCII(주석/한글 유입 등)면 목업 사용 (HTTP 헤더 인코딩 오류 방지)
+    if not key or not key.isascii():
         return False
     try:
         import anthropic  # noqa
@@ -200,9 +202,16 @@ def _llm_narrative(feat, risk, rag) -> dict:
 
 # ────────────────────────────── 진입점 ──────────────────────────────
 def generate(feat: CrackFeatures, risk: RiskResult, rag: RagResult) -> Report:
-    """6섹션 보고서 Report 생성. 결정적 섹션은 코드, 서술 섹션은 LLM/목업."""
-    narr = _llm_narrative(feat, risk, rag) if _has_api() \
-        else _mock_narrative(feat, risk, rag)
+    """6섹션 보고서 Report 생성. 결정적 섹션은 코드, 서술 섹션은 LLM/목업.
+    LLM 호출이 실패해도(키 오류·네트워크·레이트리밋 등) 앱이 죽지 않게 목업으로 폴백.
+    """
+    if _has_api():
+        try:
+            narr = _llm_narrative(feat, risk, rag)
+        except Exception:
+            narr = _mock_narrative(feat, risk, rag)   # API 오류 → 안전 폴백
+    else:
+        narr = _mock_narrative(feat, risk, rag)
     return Report(
         basic_info=_basic_info(),
         inspection_result=narr["inspection_result"],

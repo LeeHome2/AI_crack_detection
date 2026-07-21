@@ -6,6 +6,18 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+
+def _env(name, default=""):
+    """환경변수를 읽되 인라인 주석(' #...')·양끝 공백을 제거해 방어.
+    docker compose env_file 은 값 뒤 주석을 값에 포함시킬 수 있어(KEY=값 # 설명 → '값 # 설명'),
+    이를 정리해 헤더 인코딩 오류·잘못된 파싱을 막는다.
+    """
+    raw = os.environ.get(name, default) or ""
+    # 공백으로 구분된 인라인 주석 제거 (예: 'solar   # 설명' → 'solar')
+    if " #" in raw:
+        raw = raw.split(" #", 1)[0]
+    return raw.strip()
+
 # ---- 모델 ----
 # 타일 학습본 (train_tiled_full). 없으면 앱이 안내 메시지 표시
 YOLO_WEIGHTS = os.path.join(
@@ -33,16 +45,16 @@ CHROMA_DIR = os.path.join(BASE_DIR, "knowledge", "chroma")
 RAG_TOP_K = 3
 
 # 임베딩 제공자: "solar"(기본, Upstage API) | "bge"(로컬 BGE-m3) | "mock"(오프라인 테스트)
-EMBED_PROVIDER = os.environ.get("EMBED_PROVIDER", "solar")
+EMBED_PROVIDER = _env("EMBED_PROVIDER", "solar") or "solar"
 
 # Solar(Upstage) 임베딩 — 비대칭(문서=passage / 쿼리=query, 동일 공간), 4096차원.
 # 배포에 유리: 로컬 모델·torch 불필요, 인스턴스·이미지 경량화. (런타임에 Upstage API 필요)
 # ※ 모델 ID는 Upstage 콘솔에서 최신값 확인 권장(변경될 수 있음).
-SOLAR_EMBED_ENDPOINT = os.environ.get(
+SOLAR_EMBED_ENDPOINT = _env(
     "SOLAR_EMBED_ENDPOINT", "https://api.upstage.ai/v1/solar/embeddings")
-SOLAR_EMBED_PASSAGE = os.environ.get("SOLAR_EMBED_PASSAGE", "solar-embedding-1-large-passage")
-SOLAR_EMBED_QUERY = os.environ.get("SOLAR_EMBED_QUERY", "solar-embedding-1-large-query")
-UPSTAGE_API_KEY = os.environ.get("UPSTAGE_API_KEY", "")
+SOLAR_EMBED_PASSAGE = _env("SOLAR_EMBED_PASSAGE", "solar-embedding-1-large-passage")
+SOLAR_EMBED_QUERY = _env("SOLAR_EMBED_QUERY", "solar-embedding-1-large-query")
+UPSTAGE_API_KEY = _env("UPSTAGE_API_KEY")
 
 # 로컬 폴백(BGE-m3) — EMBED_PROVIDER=bge 일 때만 사용
 EMBED_MODEL = "BAAI/bge-m3"   # 한국어 지원 오픈소스 임베딩
@@ -53,12 +65,15 @@ EMBED_MODEL = "BAAI/bge-m3"   # 한국어 지원 오픈소스 임베딩
 # ※ Solar 실측 재보정: 관련 근거가 ~0.20~0.25 로 분포 → 0.55면 대부분 필터링돼 RAG가
 #    사실상 꺼짐. 그래서 Solar 분포에 맞춰 기본값 0.20 으로 낮춤.
 #    (임베더/문서 데이터가 바뀌면 분포 재관측 후 env RAG_MATCH_MIN_SCORE 로 조정)
-RAG_MATCH_MIN_SCORE = float(os.environ.get("RAG_MATCH_MIN_SCORE", "0.20"))
+try:
+    RAG_MATCH_MIN_SCORE = float(_env("RAG_MATCH_MIN_SCORE", "0.20") or "0.20")
+except ValueError:
+    RAG_MATCH_MIN_SCORE = 0.20
 
 # ---- 보고서 생성 (Claude API) ----
 # ※ 실제 사용 가능한 모델 ID로 교체 필요 (예: claude-sonnet-4-5-20250929 등).
-ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-5")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = _env("ANTHROPIC_MODEL", "claude-sonnet-4-5") or "claude-sonnet-4-5"
+ANTHROPIC_API_KEY = _env("ANTHROPIC_API_KEY")
 
 # 자가진단 등급(정상/주의/위험/긴급) → 현업 상태평가등급(A~E) 참고 매핑
 STATE_GRADE_MAP = {
