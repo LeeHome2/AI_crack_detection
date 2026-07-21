@@ -3,7 +3,14 @@
 - mm 절대측정 안 함 → 픽셀 상대값 기준
 """
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
+from enum import Enum
+
+
+class Stage(str, Enum):
+    """에이전트 진행 단계. (확장 예정: TRIAGE·RETAKE=비전 게이트 / COLLECT·DONE=멀티턴)"""
+    AWAIT_IMAGE = "await_image"
+    ANALYZED = "analyzed"
 
 
 @dataclass
@@ -77,3 +84,17 @@ class Report:
         for title, attr in self.SECTIONS:
             parts.append(f"## {title}\n{getattr(self, attr).strip()}")
         return "\n\n---\n\n".join(parts)
+
+
+@dataclass
+class AgentState:
+    """세션 전체 상태. 무거운 결과(detect/features)를 캐시해 Streamlit 재실행 시 재계산 방지.
+    각 노드가 state를 받아 갱신·반환하는 구조 → 추후 LangGraph 이식 용이.
+    """
+    stage: str = Stage.AWAIT_IMAGE
+    image_hash: str = ""
+    detect: Optional[DetectResult] = None
+    features: Optional[CrackFeatures] = None
+    risk: Optional[RiskResult] = None
+    rag: Optional[RagResult] = None
+    report: Optional[Report] = None
