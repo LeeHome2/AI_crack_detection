@@ -62,6 +62,31 @@ def _analyze_box(gray_crop):
     return length, width
 
 
+def skeleton_mask(img_bgr, det: DetectResult):
+    """탐지 박스별 균열 중심선(스켈레톤)을 원본 크기 마스크로 반환 (시각화용).
+    - 재학습 없이 OpenCV 스켈레톤으로 '균열을 정밀하게 따라 그린' 오버레이를 만든다.
+    - 반환: (H, W) uint8, 균열 중심선=255. 탐지 없으면 전부 0.
+    """
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    H, W = gray.shape[:2]
+    full = np.zeros((H, W), np.uint8)
+    for d in det.detections:
+        x1, y1, x2, y2 = d.box
+        x1, y1 = max(0, int(x1)), max(0, int(y1))
+        x2, y2 = min(W, int(x2)), min(H, int(y2))
+        crop = gray[y1:y2, x1:x2]
+        if crop.size == 0:
+            continue
+        mask = _crack_mask(crop)
+        if _HAS_SKIMAGE and (mask > 0).sum() >= 10:
+            sk = (skeletonize(mask > 0).astype(np.uint8) * 255)
+        else:
+            sk = mask   # skimage 없으면 마스크 자체로 폴백
+        region = full[y1:y2, x1:x2]
+        full[y1:y2, x1:x2] = np.maximum(region, sk)
+    return full
+
+
 def extract(img_bgr, det: DetectResult) -> CrackFeatures:
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     H, W = gray.shape[:2]
