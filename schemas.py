@@ -34,6 +34,8 @@ class TriageResult:
 class Detection:
     box: List[int]          # [x1, y1, x2, y2] 원본 좌표
     conf: float
+    cls: int = 0            # 클래스 id (다중클래스 detection용; 균열 전용 모델은 0)
+    label: str = "crack"    # 클래스명(crack/spalling/efflorescence/rebar_exposure/steel_defect/paint_damage)
 
 
 @dataclass
@@ -47,7 +49,10 @@ class CrackFeatures:
     crack_count: int = 0
     max_length_ratio: float = 0.0   # 최장 균열 길이 / 이미지 대각선
     avg_width_px: float = 0.0       # 평균 폭(픽셀)
-    max_confidence: float = 0.0     # 최고 탐지 신뢰도
+    max_confidence: float = 0.0     # 최고 탐지 신뢰도(균열 채널)
+    # [2차 MVP] 복합 결함 요약 — 균열 외 면적 결함(bbox). 균열 전용 모델이면 빈 dict → 기존과 동일.
+    #   {label: {"count": int, "max_conf": float}}  예: {"rebar_exposure": {"count":2,"max_conf":0.71}}
+    defects: dict = field(default_factory=dict)
 
 
 @dataclass
