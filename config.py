@@ -19,8 +19,10 @@ def _env(name, default=""):
     return raw.strip()
 
 # ---- 모델 ----
-# 타일 학습본 (train_tiled_full). 없으면 앱이 안내 메시지 표시
-YOLO_WEIGHTS = os.path.join(
+# 타일 학습본 (train_tiled_full). 없으면 앱이 안내 메시지 표시.
+# ※ 2차 MVP(복합 결함) 컨테이너는 env YOLO_WEIGHTS 로 6종 가중치(runs/detect/defect6/...)를
+#   가리키고, 1차 MVP(8502·균열 전용)는 기본값 유지 → 두 컨테이너가 다른 모델을 쓴다.
+YOLO_WEIGHTS = _env("YOLO_WEIGHTS", "") or os.path.join(
     BASE_DIR, "runs", "detect", "runs", "crack", "train_tiled_full", "weights", "best.pt"
 )
 
