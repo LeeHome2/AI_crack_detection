@@ -79,7 +79,7 @@ def _evidence_basis(rag: RagResult) -> str:
     if not rag.evidences:
         return "- 안전기준 근거는 지식베이스(RAG) 구축 후 표시됩니다. (knowledge/build_index.py 실행)"
     return "\n".join(
-        f"- {e.text} (출처: {e.source}, 유사도 {e.score})" for e in rag.evidences
+        f"- {e.text}\n  (근거 출처: {e.cite()}, 유사도 {e.score})" for e in rag.evidences
     )
 
 

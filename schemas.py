@@ -65,8 +65,22 @@ class RiskResult:
 @dataclass
 class Evidence:
     text: str
-    source: str
+    source: str                 # 표시용 인용 문자열(기준명·문서종류·발행처) — 파일명 아님
     score: float = 0.0
+    # 실제 출처 메타(파일명 대신 '어디서 왔는지'를 정확히) — 보고서·UI 인용에 사용
+    title: str = ""             # 기준명/문서명 (예: 콘크리트구조 설계기준)
+    doc_type: str = ""          # 문서종류 (법령·고시·설계기준·세부지침·시방·판례·요약)
+    publisher: str = ""         # 발행처 (예: 국토교통부·국토안전관리원)
+    url: str = ""               # 원문/출처 링크
+    defect: str = ""            # 관련 결함유형 태그 (crack/rebar_exposure/...)
+
+    def cite(self) -> str:
+        """보고서·UI용 정식 인용 문자열. 파일명이 아니라 실제 근거 출처."""
+        head = f"「{self.title}」" if self.title else self.source
+        bits = [b for b in (self.doc_type, self.publisher) if b]
+        tail = f" ({' · '.join(bits)})" if bits else ""
+        link = f" — {self.url}" if self.url else ""
+        return f"{head}{tail}{link}"
 
 
 @dataclass

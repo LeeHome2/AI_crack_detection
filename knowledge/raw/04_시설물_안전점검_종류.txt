@@ -1,3 +1,11 @@
+@meta
+기준명: 시설물 안전점검의 종류와 시기
+문서종류: 생활법령(요약)
+발행처: 법제처 찾기쉬운 생활법령정보
+출처: https://easylaw.go.kr/CSP/CnpClsMain.laf?popMenu=ov&csmSeq=1169&ccfNo=2&cciNo=1&cnpClsNo=2
+결함유형: general
+@endmeta
+
 [시설물 안전점검의 종류와 시기]
 
 시설물의 안전 및 유지관리에 관한 특별법(시설물안전법)에 따라 안전점검은 목적과 시기에 따라 여러 종류로 구분된다.
