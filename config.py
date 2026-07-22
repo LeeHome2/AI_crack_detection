@@ -49,6 +49,42 @@ RULE_COUNT_SEVERE = 5      # 균열 매우 다수
 RULE_LENGTH_HIGH = 0.15    # 최장 균열 길이비(대각선 대비) 큰 편
 GRADE_BINS = [(0, 39, "정상"), (40, 69, "주의"), (70, 89, "위험"), (90, 999, "긴급")]
 
+# ---- [2차 MVP] 복합 결함 위험 가중 ----
+# 결함별 기본 가점 — 구조적 심각도 순. 균열(crack)은 위 RULE_CONF/COUNT/LENGTH 채널이 담당(중복 방지).
+# label 은 변환기 CLASS_NAMES / Detection.label 과 정합.
+#   철근노출: 피복 탈락·활성 부식·단면 손실 → 최고 위험(균열 강탐지 +30과 동급)
+#   강재손상: 구조 강재 손상 · 박리/박락: 콘크리트 피복 손실(철근노출 전조)
+#   백태/누수: 수분 침투 지표(2차 열화 유발) · 도장손상: 방식 코팅·미관(경미)
+DEFECT_WEIGHTS = {
+    "rebar_exposure": 30,
+    "steel_defect": 25,
+    "spalling": 20,
+    "efflorescence": 10,
+    "paint_damage": 5,
+    "crack": 0,            # crack 채널이 계산 → 복합 합산에서 중복 가점 방지
+}
+# 결함별 신뢰도 하한 — 이 값 미만 탐지는 위험 산정에서 무시(면적 결함 bbox는 신뢰도 높게 나옴).
+# ※ 재학습 후 실측 분포로 재보정(가이드 예시 0.92~0.81은 면적 결함에서 자연 도달 예상, 균열은 낮음).
+DEFECT_CONF_MIN = {
+    "rebar_exposure": 0.35,
+    "steel_defect": 0.35,
+    "spalling": 0.35,
+    "efflorescence": 0.30,
+    "paint_damage": 0.40,
+    "crack": 0.20,
+}
+DEFECT_CONF_MIN_DEFAULT = 0.35
+# 동일 결함 다수 인스턴스 소폭 가산.
+DEFECT_MULTI_COUNT = 3
+DEFECT_MULTI_BONUS = 5
+# 복합(서로 다른 유의 결함 ≥2종 동시) 가점 — 복합 열화 상호작용(예: 균열+백태=누수성 균열, 박락+철근노출=진행성 열화).
+COMPOSITE_MULTI_TYPE_BONUS = 10
+# 한글 표기(설명가능성·보고서용)
+DEFECT_KO = {
+    "crack": "균열", "spalling": "박리/박락", "efflorescence": "백태/누수",
+    "rebar_exposure": "철근노출", "steel_defect": "강재손상", "paint_damage": "도장손상",
+}
+
 # ---- RAG ----
 CHROMA_DIR = os.path.join(BASE_DIR, "knowledge", "chroma")
 RAG_TOP_K = 3

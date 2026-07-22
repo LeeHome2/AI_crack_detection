@@ -34,6 +34,8 @@ class TriageResult:
 class Detection:
     box: List[int]          # [x1, y1, x2, y2] 원본 좌표
     conf: float
+    cls: int = 0            # 클래스 id (다중클래스 detection용; 균열 전용 모델은 0)
+    label: str = "crack"    # 클래스명(crack/spalling/efflorescence/rebar_exposure/steel_defect/paint_damage)
 
 
 @dataclass
@@ -47,7 +49,10 @@ class CrackFeatures:
     crack_count: int = 0
     max_length_ratio: float = 0.0   # 최장 균열 길이 / 이미지 대각선
     avg_width_px: float = 0.0       # 평균 폭(픽셀)
-    max_confidence: float = 0.0     # 최고 탐지 신뢰도
+    max_confidence: float = 0.0     # 최고 탐지 신뢰도(균열 채널)
+    # [2차 MVP] 복합 결함 요약 — 균열 외 면적 결함(bbox). 균열 전용 모델이면 빈 dict → 기존과 동일.
+    #   {label: {"count": int, "max_conf": float}}  예: {"rebar_exposure": {"count":2,"max_conf":0.71}}
+    defects: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -60,8 +65,22 @@ class RiskResult:
 @dataclass
 class Evidence:
     text: str
-    source: str
+    source: str                 # 표시용 인용 문자열(기준명·문서종류·발행처) — 파일명 아님
     score: float = 0.0
+    # 실제 출처 메타(파일명 대신 '어디서 왔는지'를 정확히) — 보고서·UI 인용에 사용
+    title: str = ""             # 기준명/문서명 (예: 콘크리트구조 설계기준)
+    doc_type: str = ""          # 문서종류 (법령·고시·설계기준·세부지침·시방·판례·요약)
+    publisher: str = ""         # 발행처 (예: 국토교통부·국토안전관리원)
+    url: str = ""               # 원문/출처 링크
+    defect: str = ""            # 관련 결함유형 태그 (crack/rebar_exposure/...)
+
+    def cite(self) -> str:
+        """보고서·UI용 정식 인용 문자열. 파일명이 아니라 실제 근거 출처."""
+        head = f"「{self.title}」" if self.title else self.source
+        bits = [b for b in (self.doc_type, self.publisher) if b]
+        tail = f" ({' · '.join(bits)})" if bits else ""
+        link = f" — {self.url}" if self.url else ""
+        return f"{head}{tail}{link}"
 
 
 @dataclass

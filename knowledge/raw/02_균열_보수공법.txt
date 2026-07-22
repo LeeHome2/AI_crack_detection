@@ -1,3 +1,11 @@
+@meta
+기준명: 콘크리트 균열 보수공법
+문서종류: 연구자료(요약)
+발행처: 건설기술 연구자료(CODIL)
+출처: https://www.codil.or.kr/filebank/original/RK/OTKNRK500317/OTKNRK500317.pdf
+결함유형: crack
+@endmeta
+
 [콘크리트 균열 보수공법]
 
 보수가 필요한 균열폭 한도는 목적에 따라 다르다. 방수성 확보 측면에서는 균열폭 0.2mm 이상, 내구성 확보 측면에서는 0.4mm 이상이면 보수를 검토한다.

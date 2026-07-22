@@ -151,7 +151,8 @@ with st.expander("측정 특징 · 위험도 산정 근거"):
 with st.expander("📚 안전기준 근거 (RAG)", expanded=bool(rag_res.evidences)):
     if rag_res.evidences:
         for e in rag_res.evidences:
-            st.markdown(f"> {e.text}  \n_출처: {e.source} (유사도 {e.score})_")
+            src = f"[{e.source}]({e.url})" if e.url else e.source
+            st.markdown(f"> {e.text}  \n_근거 출처: {src} (유사도 {e.score})_")
     else:
         st.info("RAG 지식베이스가 아직 구축되지 않았습니다. build_index 실행 후 표시됩니다.")
 

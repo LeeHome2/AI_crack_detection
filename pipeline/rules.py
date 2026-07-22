@@ -3,6 +3,8 @@
 - 신뢰도·개수 기반 점수 -> 등급
 - 점수는 항상 이 코드가 매김 (YOLO/RAG/LLM은 재료만 제공)
 - 각 가점의 근거를 contributions에 기록 (설명가능성)
+- [2차 MVP] 복합 결함: 균열 채널 + 결함별 가점(철근노출+30·박락+20·백태/누수+10 등) 합산.
+  feat.defects 가 비면(균열 전용 모델) 균열 전용 채점과 완전히 동일(하위호환).
 """
 import config
 from schemas import CrackFeatures, RiskResult, RagResult
@@ -13,6 +15,49 @@ def _grade(score):
         if lo <= score <= hi:
             return name
     return "정상"
+
+
+def _score_defects(feat: CrackFeatures, contribs: list) -> int:
+    """[2차 MVP] 균열 외 면적 결함(feat.defects)의 복합 위험 가점.
+    - 결함별 신뢰도 하한 통과 시에만 가점(면적 결함 오탐 억제).
+    - 동일 결함 다수 → 소폭 가산. 서로 다른 결함 ≥2종 동시 → 복합 가점.
+    """
+    score = 0
+    present = []
+    for label, stat in (feat.defects or {}).items():
+        if label == "crack":
+            continue  # 균열은 crack 채널에서 계산(중복 방지)
+        weight = config.DEFECT_WEIGHTS.get(label, 0)
+        if weight <= 0:
+            continue
+        conf = float(stat.get("max_conf", 0.0))
+        count = int(stat.get("count", 0))
+        thr = config.DEFECT_CONF_MIN.get(label, config.DEFECT_CONF_MIN_DEFAULT)
+        if count <= 0 or conf < thr:
+            continue
+        ko = config.DEFECT_KO.get(label, label)
+        score += weight
+        contribs.append({"rule": f"{ko} 탐지",
+                         "detail": f"신뢰도 {conf:.2f} ≥ {thr}, {count}개",
+                         "points": weight})
+        present.append(label)
+        if count >= config.DEFECT_MULTI_COUNT:
+            score += config.DEFECT_MULTI_BONUS
+            contribs.append({"rule": f"{ko} 다수",
+                             "detail": f"{count}개 ≥ {config.DEFECT_MULTI_COUNT}",
+                             "points": config.DEFECT_MULTI_BONUS})
+
+    # 복합 결함 동시 발생(유의 균열 포함, 서로 다른 결함 ≥2종)
+    distinct = set(present)
+    if feat.crack_count and feat.max_confidence >= config.RULE_CONF_MODERATE:
+        distinct.add("crack")
+    if len(distinct) >= 2:
+        score += config.COMPOSITE_MULTI_TYPE_BONUS
+        kos = ", ".join(config.DEFECT_KO.get(l, l) for l in sorted(distinct))
+        contribs.append({"rule": "복합 결함 동시 발생",
+                         "detail": f"서로 다른 결함 {len(distinct)}종({kos}) 동시 탐지",
+                         "points": config.COMPOSITE_MULTI_TYPE_BONUS})
+    return score
 
 
 def evaluate(feat: CrackFeatures, rag: RagResult = None) -> RiskResult:
@@ -61,6 +106,7 @@ def evaluate(feat: CrackFeatures, rag: RagResult = None) -> RiskResult:
                              "detail": f"유사도 {config.RAG_MATCH_MIN_SCORE}+ 근거 {len(strong)}건 검색됨",
                              "points": 20})
 
-    # (확장 예정) 철근노출 +30 / 누수 +10 — 범위 외
+    # [2차 MVP] 복합 결함 가점 — 균열 외 면적 결함(철근노출·박락·백태/누수 등)
+    score += _score_defects(feat, contribs)
 
     return RiskResult(score=score, grade=_grade(score), contributions=contribs)
