@@ -71,6 +71,8 @@ def skeleton_mask(img_bgr, det: DetectResult):
     H, W = gray.shape[:2]
     full = np.zeros((H, W), np.uint8)
     for d in det.detections:
+        if getattr(d, "label", "crack") != "crack":
+            continue   # 중심선(스켈레톤)은 균열에만 — 면적 결함 박스엔 그리지 않음
         x1, y1, x2, y2 = d.box
         x1, y1 = max(0, int(x1)), max(0, int(y1))
         x2, y2 = min(W, int(x2)), min(H, int(y2))
@@ -88,24 +90,38 @@ def skeleton_mask(img_bgr, det: DetectResult):
 
 
 def extract(img_bgr, det: DetectResult) -> CrackFeatures:
+    """[2차 MVP] 균열 채널(OpenCV 형태분석) + 면적 결함 요약(feat.defects) 분리 추출.
+    - label=='crack' 탐지: crack_count/폭/길이/최고신뢰도(균열 채널) 계산.
+    - 그 외 결함(철근노출·박락·백태 등): {label:{count,max_conf}} 로 집계(폭/길이 미측정).
+    - 균열 전용 모델(모든 라벨 crack)이면 기존 동작과 동일.
+    """
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     H, W = gray.shape[:2]
     diag = (W ** 2 + H ** 2) ** 0.5
 
-    feat = CrackFeatures(crack_count=len(det.detections))
+    feat = CrackFeatures()
     if not det.detections:
         return feat
 
-    lengths, widths, confs = [], [], []
+    lengths, widths, crack_confs = [], [], []
+    defects = {}
     for d in det.detections:
-        x1, y1, x2, y2 = d.box
-        length, width = _analyze_box(gray[y1:y2, x1:x2])
-        lengths.append(length)
-        if width > 0:
-            widths.append(width)
-        confs.append(d.conf)
+        label = getattr(d, "label", "crack")
+        if label == "crack":
+            x1, y1, x2, y2 = d.box
+            length, width = _analyze_box(gray[y1:y2, x1:x2])
+            lengths.append(length)
+            if width > 0:
+                widths.append(width)
+            crack_confs.append(d.conf)
+        else:
+            slot = defects.setdefault(label, {"count": 0, "max_conf": 0.0})
+            slot["count"] += 1
+            slot["max_conf"] = max(slot["max_conf"], d.conf)
 
+    feat.crack_count = len(crack_confs)
     feat.max_length_ratio = round(max(lengths) / diag, 4) if lengths else 0.0
     feat.avg_width_px = round(float(np.mean(widths)), 2) if widths else 0.0
-    feat.max_confidence = round(max(confs), 3) if confs else 0.0
+    feat.max_confidence = round(max(crack_confs), 3) if crack_confs else 0.0
+    feat.defects = defects
     return feat

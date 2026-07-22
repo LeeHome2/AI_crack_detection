@@ -99,21 +99,56 @@ def _contrib_line(risk: RiskResult) -> str:
     return " · ".join(f"{c['rule']}(+{c['points']})" for c in risk.contributions)
 
 
+def _defect_rows(feat: CrackFeatures) -> str:
+    """[2차 MVP] 균열 외 탐지 결함(feat.defects)을 표 행으로. 없으면 빈 문자열."""
+    defects = getattr(feat, "defects", None) or {}
+    if not defects:
+        return ""
+    ko = config.DEFECT_KO
+    rows = []
+    for label, stat in defects.items():
+        name = ko.get(label, label)
+        rows.append(f"| {name} | {stat.get('count', 0)}개소 (최고 신뢰도 {stat.get('max_conf', 0):.2f}) |")
+    return "\n".join(rows)
+
+
+def _defect_prompt_block(feat: CrackFeatures) -> str:
+    """LLM 프롬프트용 복합 결함 목록(보이는 사실만)."""
+    defects = getattr(feat, "defects", None) or {}
+    if not defects:
+        return "- (균열 외 탐지 결함 없음)"
+    ko = config.DEFECT_KO
+    return "\n".join(
+        f"- {ko.get(l, l)}: {s.get('count',0)}개소 (신뢰도 {s.get('max_conf',0):.2f})"
+        for l, s in defects.items())
+
+
 # ─────────────────────── 서술 섹션 목업 (API 없을 때) ───────────────────────
 def _mock_inspection_result(feat: CrackFeatures, meta=None) -> str:
     length_pct = round(feat.max_length_ratio * 100, 1)
-    return (
-        "업로드된 사진에서 다음과 같은 균열이 탐지되었습니다.\n\n"
+    defect_rows = _defect_rows(feat)
+    crack_block = (
+        "업로드된 사진에서 다음과 같은 결함이 탐지되었습니다.\n\n"
         "| 항목 | 결과 |\n"
         "|---|---|\n"
         f"| 탐지된 균열 개수 | {feat.crack_count}개소 |\n"
         f"| 최고 탐지 신뢰도 | {feat.max_confidence} |\n"
         f"| 최장 균열 길이 (상대) | 이미지 대각선의 약 {length_pct}% |\n"
-        f"| 평균 균열 폭 (상대) | 픽셀 기준 {feat.avg_width_px}px |\n\n"
-        "※ 사진만으로는 실제 mm 단위 폭을 확정할 수 없어 상대값으로 표기합니다. "
-        "탐지 이미지(박스 표시)는 첨부 참조."
-        + _meta_observation(meta)
+        f"| 평균 균열 폭 (상대) | 픽셀 기준 {feat.avg_width_px}px |\n"
     )
+    composite = ""
+    if defect_rows:
+        composite = (
+            "\n**균열 외 복합 결함**\n\n"
+            "| 결함 유형 | 결과 |\n"
+            "|---|---|\n"
+            f"{defect_rows}\n"
+        )
+    tail = (
+        "\n※ 사진만으로는 실제 mm 단위 폭을 확정할 수 없어 상대값으로 표기합니다. "
+        "탐지 이미지(박스 표시)는 첨부 참조."
+    )
+    return crack_block + composite + tail + _meta_observation(meta)
 
 
 def _mock_safety_grade(risk: RiskResult) -> str:
@@ -129,19 +164,27 @@ def _mock_safety_grade(risk: RiskResult) -> str:
 
 
 def _mock_overall_opinion(feat: CrackFeatures, risk: RiskResult) -> str:
+    defects = getattr(feat, "defects", None) or {}
     if risk.grade in ("위험", "긴급"):
-        head = "탐지된 균열의 규모·수량으로 볼 때 **즉시 전문가 정밀 점검**이 필요합니다."
+        head = "탐지된 결함의 종류·규모로 볼 때 **즉시 전문가 정밀 점검**이 필요합니다."
     elif risk.grade == "주의":
-        head = "균열이 확인되어 **유지관찰 및 추가 점검**이 필요합니다."
+        head = "결함이 확인되어 **유지관찰 및 추가 점검**이 필요합니다."
     else:
         head = "현재 뚜렷한 위험 신호는 낮으나 **주기적 관찰**을 권장합니다."
-    return (
-        f"- {head}\n"
-        "- 균열폭이 0.3mm를 초과하거나 시간이 지나며 진행(확장)될 경우 "
-        "적극적 보수(충전·주입)가 필요합니다.\n"
-        "- 구조적 원인(하중·부등침하) 가능성을 배제할 수 없으므로, "
-        "**전문가의 정밀 점검**을 권고합니다."
-    )
+    lines = [f"- {head}"]
+    # 복합 결함별 조치 방향(고위험 결함 우선 고지)
+    if "rebar_exposure" in defects:
+        lines.append("- **철근노출**이 확인되어 부식·단면손실 우려가 있으므로 "
+                     "방청·단면복구 등 적극적 보수와 정밀진단이 필요합니다.")
+    if "spalling" in defects:
+        lines.append("- **박리·박락**은 철근노출로 진행될 수 있어 들뜬 부위 제거 후 단면복구를 권고합니다.")
+    if "efflorescence" in defects:
+        lines.append("- **백태(누수 흔적)**는 수분 침투 신호이므로 누수 원인 규명·방수 보수를 검토하세요.")
+    lines.append("- 균열폭이 0.3mm를 초과하거나 시간이 지나며 진행(확장)될 경우 "
+                 "적극적 보수(충전·주입)가 필요합니다.")
+    lines.append("- 구조적 원인(하중·부등침하) 가능성을 배제할 수 없으므로, "
+                 "**전문가의 정밀 점검**을 권고합니다.")
+    return "\n".join(lines)
 
 
 def _mock_narrative(feat, risk, rag, meta=None) -> dict:
@@ -192,6 +235,9 @@ def _prompt(feat, risk, rag, meta=None) -> str:
 - 최장 균열 길이 비율(대각선 대비): {feat.max_length_ratio}
 - 평균 균열 폭(px): {feat.avg_width_px}
 
+[균열 외 복합 결함(코드 탐지 — 보이는 사실만, 새로 지어내지 말 것)]
+{_defect_prompt_block(feat)}
+
 [AI 비전 육안 관찰(트리아지) — 보이는 사실만, 새로 지어내지 말 것]
 {_meta_prompt_block(meta)}
 
@@ -207,7 +253,7 @@ def _prompt(feat, risk, rag, meta=None) -> str:
 표가 자연스러운 곳(점검 결과·안전등급)은 마크다운 표를 쓰세요.
 
 ## 2. 점검 결과
-(탐지된 균열 개수·신뢰도·길이·폭을 정리)
+(탐지된 균열 개수·신뢰도·길이·폭을 정리하고, 균열 외 복합 결함이 있으면 결함별로 함께 정리)
 
 ## 3. 안전등급 평가
 (위험도 점수/자가진단 등급/참고 상태평가등급과 산정 근거)
