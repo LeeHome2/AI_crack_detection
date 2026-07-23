@@ -1,0 +1,13 @@
+flowchart TD
+    U["사용자(폰)"] -->|"사진"| APP["Streamlit 앱"]
+    APP --> T["① Triage<br/>비전 게이트+메타 · 복합 1차 정성식별 ✅"]
+    T -->|"재촬영/반려"| RETAKE["안내 후 중단"]
+    T -->|"통과"| C["② Collect<br/>멀티턴 대화 수집 ⏳PR-B"]
+    C --> D["③ Detect · 하이브리드<br/>균열=YOLOv8-seg 마스크 · 면적결함=YOLOv8 bbox 6종 ⏳재학습"]
+    D --> F["④ Features<br/>균열=마스크 직접 · 면적결함=집계"]
+    F --> R["⑤ Rule<br/>복합 위험도(결함별 가중·신뢰도 임계값)"]
+    R --> RAG["⑥ RAG<br/>Solar→ChromaDB · @meta 출처인용 ✅"]
+    RAG --> REP["⑦ Report<br/>복합 종합 6섹션"]
+    REP --> OUT["대화형 진단 보고서"]
+    C -.->|"외부 정보"| REP
+    T -.->|"시각 메타"| REP
