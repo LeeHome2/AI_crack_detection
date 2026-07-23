@@ -123,6 +123,17 @@ def main():
     embs = embedder.embed_passages(docs)      # 문서 = passage 임베딩
     col.add(documents=docs, embeddings=embs, metadatas=metas, ids=ids)
     print(f"[완료] {len(files)}개 문서 → {len(docs)}개 청크 인덱싱 (ChromaDB: {config.CHROMA_DIR})")
+    # 인덱스 버전 마커 기록 → 배포 시 repo의 KB_VERSION 과 비교해 불일치면 entrypoint 가 자동 재빌드
+    # (옛 인덱스가 볼륨에 남아 스키마/메트릭 수정이 무효화되는 것을 방지)
+    _ver_src = os.path.join(config.BASE_DIR, "knowledge", "KB_VERSION")
+    try:
+        _ver = open(_ver_src, encoding="utf-8").read().strip()
+    except Exception:
+        _ver = ""
+    if _ver:
+        with open(os.path.join(config.CHROMA_DIR, ".kb_version"), "w", encoding="utf-8") as vf:
+            vf.write(_ver)
+        print(f"[버전] 인덱스 버전 마커 기록: {_ver}")
     if no_meta:
         print(f"※ 프런트매터(@meta) 없는 문서(파일명으로만 인용됨): {no_meta}")
 

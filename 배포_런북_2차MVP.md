@@ -70,24 +70,24 @@ docker compose up -d --build          # 8501 재빌드(6종 모델 포함)
 
 ---
 
-## Phase 3 — RAG 인덱스 재구축 (★ 필수)
+## Phase 3 — RAG 인덱스 재구축 (버전 마커로 자동)
 
-볼륨에 옛 11문서 인덱스가 남아 있어 **재배포만으론 갱신 안 됨**. 둘 중 하나:
+**이제 자동이다.** `knowledge/KB_VERSION`(repo) ↔ 볼륨의 `.kb_version`을 entrypoint가 비교해,
+**다르면 재배포 시 자동으로 재빌드**한다. 옛 볼륨엔 마커가 없으니(불일치) → 다음 배포에서
+L2 인덱스가 코사인으로 자동 갱신됨. 지식 문서/스키마를 바꾸면 **`KB_VERSION` 값만 올리면**
+다음 배포에서 자동 재빌드된다. (배포 로그에 `인덱스 재빌드 필요 (repo=... vs 인덱스=...)` 확인)
 
-**A) 컨테이너 안에서 재빌드(권장·무중단)** — `build_index.py`가 컬렉션을 지우고 다시 만든다:
+수동으로 강제하려면(옵션):
 ```bash
-docker compose exec crack-app python knowledge/build_index.py
-# "15개 문서 → NN개 청크 인덱싱" 확인. (컨테이너 env의 UPSTAGE_API_KEY 사용)
+# A) 컨테이너 안에서 즉시 재빌드(무중단) — build_index가 컬렉션 삭제 후 코사인으로 재생성
+docker compose exec crack-app python knowledge/build_index.py   # "17개 문서 → 98개 청크" 확인
+# B) 클린 재기동
+docker compose down && docker volume rm crack_crack_chroma && docker compose up -d --build
 ```
 
-**B) 볼륨 삭제 후 재기동(클린)**:
-```bash
-docker compose down
-docker volume rm crack_crack_chroma   # 프로젝트명 crack + 볼륨 crack_chroma
-docker compose up -d --build          # entrypoint가 빈 볼륨 → 자동 재빌드
-```
-
-> 지식 문서(`knowledge/raw/`)를 바꿀 때마다 이 단계를 반드시 다시.
+> ⚠️ **거리 메트릭 = 코사인**(build_index가 `hnsw:space=cosine`으로 생성). `RAG_MATCH_MIN_SCORE=0.30`.
+> 옛 L2 인덱스가 남아 있으면 `score=1-거리`가 음수로 나와 결함 가점 게이팅이 무의미해지므로,
+> 이 자동 재빌드가 반드시 한 번은 돌아야 함.
 
 ---
 
