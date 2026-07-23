@@ -74,6 +74,35 @@ def _meta_observation(meta) -> str:
     return f"\n**AI 비전 육안 소견:** {line}" if line else ""
 
 
+def _model_defect_set(feat) -> set:
+    """탐지 모델이 잡은 결함 집합(균열 채널 + 면적 결함)."""
+    s = set(getattr(feat, "defects", None) or {})
+    if getattr(feat, "crack_count", 0):
+        s.add("crack")
+    return s
+
+
+def _vision_crosscheck(meta, feat) -> str:
+    """[교차검증] 비전이 관찰했으나 탐지 모델이 놓친 결함을 육안 소견으로 보강.
+    탐지 정확도가 낮아도 근거 있는 결과가 나오게 하는 안전장치.
+    """
+    if not isinstance(meta, dict):
+        return ""
+    vision = meta.get("defects_observed") or []
+    if not vision:
+        return ""
+    model = _model_defect_set(feat)
+    ko = config.DEFECT_KO
+    missed = [ko.get(d, d) for d in vision if d not in model]
+    confirmed = [ko.get(d, d) for d in vision if d in model]
+    out = []
+    if confirmed:
+        out.append(f"비전·탐지모델 일치: {', '.join(confirmed)}")
+    if missed:
+        out.append(f"**모델 미검출·비전 관찰: {', '.join(missed)}** (탐지 정확도 초기 단계 — 해당 부위 재확인 권장)")
+    return ("\n**AI 비전 교차검증:** " + " · ".join(out)) if out else ""
+
+
 def _evidence_basis(rag: RagResult) -> str:
     """5. 판단 근거 (RAG) — 검색된 근거 문장을 출처와 함께 그대로 인용."""
     if not rag.evidences:
@@ -148,7 +177,7 @@ def _mock_inspection_result(feat: CrackFeatures, meta=None) -> str:
         "\n※ 사진만으로는 실제 mm 단위 폭을 확정할 수 없어 상대값으로 표기합니다. "
         "탐지 이미지(박스 표시)는 첨부 참조."
     )
-    return crack_block + composite + tail + _meta_observation(meta)
+    return crack_block + composite + tail + _meta_observation(meta) + _vision_crosscheck(meta, feat)
 
 
 def _mock_safety_grade(risk: RiskResult) -> str:
@@ -205,16 +234,20 @@ _SEC_TITLES = {
 
 def _meta_prompt_block(meta) -> str:
     """트리아지 비전 메타를 프롬프트에 주입(보이는 사실만, 지어내지 말 것)."""
-    if not isinstance(meta, dict) or not any((v or "").strip() for v in meta.values()):
+    if not isinstance(meta, dict) or not meta:
         return "- (비전 메타 없음)"
     keymap = {"structure_part": "부위", "material": "재질", "orientation": "방향",
               "branching": "분기", "efflorescence": "백태", "spalling": "박리",
               "notes": "소견"}
     lines = []
     for k, label in keymap.items():
-        v = (meta.get(k, "") or "").strip()
+        v = (meta.get(k, "") or "").strip()   # 문자열 값만
         if v and v != "미상":
             lines.append(f"- {label}: {v}")
+    obs = meta.get("defects_observed") or []   # 리스트: 비전이 육안으로 본 결함
+    if obs:
+        ko = config.DEFECT_KO
+        lines.append("- 비전 관찰 결함(육안): " + ", ".join(ko.get(d, d) for d in obs))
     return "\n".join(lines) or "- (비전 메타 없음)"
 
 
@@ -286,6 +319,10 @@ def _fill_empty(narr: dict, feat, risk, rag, meta=None) -> dict:
     for k, v in narr.items():
         if not (v or "").strip():
             narr[k] = fallback[k]
+    # 비전↔탐지 교차검증은 LLM이 빠뜨려도 항상 붙게(데모 안전장치·중복 방지)
+    cc = _vision_crosscheck(meta, feat)
+    if cc and "AI 비전 교차검증" not in (narr.get("inspection_result") or ""):
+        narr["inspection_result"] = (narr.get("inspection_result") or "") + cc
     return narr
 
 

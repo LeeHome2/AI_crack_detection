@@ -68,28 +68,35 @@ def _encode_jpeg(img_bgr) -> str:
     return base64.b64encode(buf.tobytes()).decode("ascii")
 
 
-_VISION_PROMPT = """당신은 시설물 안전점검 보조 AI의 '1차 게이트'입니다.
-아래 사진이 콘크리트 구조물의 '균열'을 자동 분석하기에 적합한지 판정하고,
-보이는 정보를 메타데이터로 정리하세요. 과장·추측을 피하고 보이는 것만 적으세요.
+_VISION_PROMPT = """당신은 시설물 안전점검 보조 AI의 '1차 게이트'이자 '육안 소견' 담당입니다.
+아래 사진이 콘크리트/강재 시설물의 '결함'을 자동 분석하기에 적합한지 판정하고,
+사진에서 육안으로 보이는 결함과 정보를 메타데이터로 정리하세요.
+과장·추측을 피하고 '실제로 보이는 것'만 적으세요. 정밀 위치·수치 판정은 하지 마세요.
+
+대상 결함(6종): 균열 · 박리/박락 · 백태/누수 · 철근노출 · 강재손상 · 도장손상
 
 반드시 아래 JSON 형식으로만 답하세요(코드블록·설명 없이 JSON만):
 {
   "verdict": "ok | retake_far | retake_blur | not_crack",
   "message": "사용자에게 보여줄 한 줄 안내(한국어). ok면 빈 문자열",
   "structure_part": "벽|바닥|기둥|천장|외벽|계단|기타|미상",
-  "material": "콘크리트|벽돌|타일|석재|기타|미상",
+  "material": "콘크리트|벽돌|타일|석재|강재|기타|미상",
   "orientation": "수직|수평|대각|불규칙|망상|미상",
   "branching": "없음|일부|많음|미상",
   "efflorescence": "있음|없음|미상",
   "spalling": "있음|없음|미상",
-  "notes": "육안 소견 한 줄(예: 백태 동반 대각 균열)"
+  "defects_observed": ["균열","철근노출"],
+  "notes": "육안 소견 한 줄(예: 백태 동반 대각 균열, 철근노출 의심)"
 }
 
+- defects_observed: 위 6종 중 사진에서 '실제로 보이는' 결함만 한국어로 배열에 담으세요.
+  확실치 않으면 넣지 마세요. 아무 결함도 안 보이면 빈 배열 [].
+
 판정 기준:
-- retake_far : 균열이 너무 작게/멀리 찍혀 형태 판별이 어려움 → 근접 재촬영 필요
-- retake_blur: 초점 흐림·흔들림으로 균열 경계가 뭉개짐
-- not_crack  : 콘크리트 구조물 균열 사진이 아님(사람·풍경·문서 등)
-- ok         : 균열(또는 균열 의심)이 충분히 보임 → 분석 진행"""
+- retake_far : 결함이 너무 작게/멀리 찍혀 형태 판별이 어려움 → 근접 재촬영 필요
+- retake_blur: 초점 흐림·흔들림으로 결함 경계가 뭉개짐
+- not_crack  : 시설물 결함 점검 대상 사진이 아님(사람·풍경·문서 등)
+- ok         : 결함(또는 결함 의심)이 충분히 보임 → 분석 진행"""
 
 
 def _vision_triage(img_bgr) -> dict:
@@ -118,6 +125,27 @@ def _parse_vision(text: str) -> dict:
     if not m:
         raise ValueError("no json in vision response")
     return json.loads(m.group(0))
+
+
+# 비전이 말한 결함명(한국어) → 정규 라벨(detector/Rule과 정합)
+_VISION_DEFECT_MAP = {
+    "균열": "crack", "박리": "spalling", "박락": "spalling", "박리/박락": "spalling",
+    "백태": "efflorescence", "누수": "efflorescence", "백태/누수": "efflorescence",
+    "철근노출": "rebar_exposure", "노출철근": "rebar_exposure",
+    "강재손상": "steel_defect", "강재": "steel_defect", "부식": "steel_defect",
+    "도장손상": "paint_damage", "도장": "paint_damage",
+}
+
+
+def _canon_defects(items) -> list:
+    """비전이 준 결함명 리스트 → 정규 라벨(중복 제거, 매핑 안 되면 무시)."""
+    out = []
+    if isinstance(items, list):
+        for it in items:
+            lab = _VISION_DEFECT_MAP.get(str(it).strip())
+            if lab and lab not in out:
+                out.append(lab)
+    return out
 
 
 _VALID = {"ok", "retake_far", "retake_blur", "not_crack"}
@@ -153,6 +181,7 @@ def triage(img_bgr) -> "object":
             if verdict not in _VALID:
                 verdict = "ok"
             meta = {k: str(raw.get(k, "") or "").strip() for k in _META_KEYS}
+            meta["defects_observed"] = _canon_defects(raw.get("defects_observed"))
             message = str(raw.get("message", "") or "").strip()
             if verdict != "ok" and not message:
                 message = _DEFAULT_MSG.get(verdict, "")
