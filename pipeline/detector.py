@@ -62,20 +62,33 @@ def _nms(boxes, iou_thr):
     return keep
 
 
+def _valid_weights(path):
+    """실제 로드 가능한 가중치인지(존재 + 1KB 초과). git-lfs 포인터·빈 파일 방어."""
+    try:
+        return bool(path) and os.path.exists(path) and os.path.getsize(path) > 1024
+    except OSError:
+        return False
+
+
 def load_model():
-    """YOLO 모델 로드 (없으면 None)."""
+    """YOLO 모델 로드 (없거나 로드 실패면 None → 앱은 RAG/규칙만으로 계속)."""
     global _model
     if _model is not None:
         return _model
-    if not os.path.exists(config.YOLO_WEIGHTS):
+    if not _valid_weights(config.YOLO_WEIGHTS):
         return None
-    from ultralytics import YOLO
-    _model = YOLO(config.YOLO_WEIGHTS)
+    try:
+        from ultralytics import YOLO
+        _model = YOLO(config.YOLO_WEIGHTS)
+    except Exception as e:
+        # 손상·버전불일치·LFS 포인터 등 → 크래시 대신 안내(모델 없음 상태로 동작)
+        print(f"[detector] 모델 로드 실패({config.YOLO_WEIGHTS}) → 탐지 없이 동작: {e}")
+        _model = None
     return _model
 
 
 def is_ready():
-    return os.path.exists(config.YOLO_WEIGHTS)
+    return _valid_weights(config.YOLO_WEIGHTS)
 
 
 def detect(img_bgr) -> DetectResult:

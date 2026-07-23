@@ -19,14 +19,28 @@ def _env(name, default=""):
     return raw.strip()
 
 # ---- 모델 ----
-# 타일 학습본 (train_tiled_full). 없으면 앱이 안내 메시지 표시.
-# ※ 2차 MVP(복합) 컨테이너는 env YOLO_WEIGHTS 로 6종 가중치를 가리키고, 1차 MVP(8502·균열)는
-#   기본값 유지 → 두 컨테이너가 다른 모델. env 경로가 '실제 존재할 때만' 사용하고, 없으면
-#   크랙 기본으로 폴백 → 6종 모델 미커밋 상태로 배포해도 크랙 모델로 안전하게 동작.
-_YOLO_DEFAULT = os.path.join(
+# 가중치 자동 선택: env → 6종 최종 → 6종 임시 → defect6_v2 → 크랙 폴백 순으로 '실제 파일'을 선택.
+# ※ 'real'=존재 + 1KB 초과. git-lfs 포인터(수백 B)나 손상 파일은 건너뛰어 크랙으로 안전 폴백
+#   → LFS 미설정 서버·모델 미커밋 상태에서도 앱이 죽지 않고 크랙 모델로 동작.
+_YOLO_CRACK = os.path.join(
     BASE_DIR, "runs", "detect", "runs", "crack", "train_tiled_full", "weights", "best.pt")
-_YOLO_ENV = _env("YOLO_WEIGHTS", "")
-YOLO_WEIGHTS = _YOLO_ENV if (_YOLO_ENV and os.path.exists(_YOLO_ENV)) else _YOLO_DEFAULT
+
+
+def _real_weights(p):
+    try:
+        return bool(p) and os.path.exists(p) and os.path.getsize(p) > 1024
+    except OSError:
+        return False
+
+
+_YOLO_CANDIDATES = [
+    _env("YOLO_WEIGHTS", ""),                                        # 명시 지정 최우선
+    os.path.join(BASE_DIR, "models", "yolov8s_defect6_final.pt"),   # 6종 최종(학습완료)
+    os.path.join(BASE_DIR, "models", "yolov8s_defect6_epoch43.pt"),  # 6종 임시
+    os.path.join(BASE_DIR, "runs", "detect", "defect6_v2", "weights", "best.pt"),
+    _YOLO_CRACK,                                                     # 균열 안전판
+]
+YOLO_WEIGHTS = next((p for p in _YOLO_CANDIDATES if _real_weights(p)), _YOLO_CRACK)
 
 # ---- 타일 슬라이스 추론 ----
 TILE = 640
