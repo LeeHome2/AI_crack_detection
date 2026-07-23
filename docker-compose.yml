@@ -1,6 +1,8 @@
-# AI 균열 안전점검 시스템 — 서버 배포용 compose (단일 서비스)
+# AI 시설물 안전점검 — 서버 배포용 compose (8501 = 고도화·CD 자동, 복합 결함 라인)
 # 로컬:  docker compose up -d --build
-# 서버:  CD가 .env(APP_IMAGE=ghcr.io/...:sha-xxxx)를 생성 후 docker compose up -d
+# 서버:  main 머지 시 CD가 git pull + rebuild.  (8502 크랙 안전판은 docker-compose.dev.yml)
+# ※ 6종 복합 모델은 best.pt를 repo에 커밋(runs/detect/defect6_v2/weights/best.pt)하면
+#   아래 YOLO_WEIGHTS 기본값이 자동 사용됨. 미커밋이면 config 기본(크랙 타일 모델)로 폴백.
 name: crack
 
 services:
@@ -18,7 +20,10 @@ services:
       EMBED_PROVIDER: ${EMBED_PROVIDER:-solar}
       SERVICE_PORT: ${SERVICE_PORT:-8501}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-5}
-      RAG_MATCH_MIN_SCORE: ${RAG_MATCH_MIN_SCORE:-0.55}
+      # Solar 실측 분포에 맞춘 값(0.20). 0.55면 근거가 대부분 필터링돼 RAG가 사실상 꺼짐.
+      RAG_MATCH_MIN_SCORE: ${RAG_MATCH_MIN_SCORE:-0.20}
+      # 6종 복합 모델 경로(커밋 시 자동 사용). 파일 없으면 config가 크랙 타일 모델로 폴백.
+      YOLO_WEIGHTS: ${YOLO_WEIGHTS:-/app/runs/detect/defect6_v2/weights/best.pt}
     ports:
       - "${SERVICE_PORT:-8501}:8501"
     volumes:

@@ -1,3 +1,11 @@
+@meta
+기준명: 콘크리트 균열의 원인과 유형
+문서종류: 연구자료(요약)
+발행처: 건설기술 연구자료(CODIL)
+출처: https://www.codil.or.kr/filebank/original/RK/OTKNRK500317/OTKNRK500317.pdf
+결함유형: crack
+@endmeta
+
 [콘크리트 균열의 원인과 유형]
 
 콘크리트 균열은 원인에 따라 크게 구조적 균열과 비구조적 균열로 나뉜다.

@@ -1,0 +1,33 @@
+# 고도화(develop) 전용 컨테이너 — MVP(main, 8501)와 분리 실행.
+# 실행: docker compose -f docker-compose.dev.yml up -d --build   (호스트 포트 8502)
+# 별도 project명·container명·볼륨·포트라 MVP 컨테이너와 충돌하지 않음.
+name: crack-agent
+
+services:
+  crack-agent-app:
+    image: crack-agent:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crack-agent-app
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      EMBED_PROVIDER: ${EMBED_PROVIDER:-solar}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}
+      RAG_MATCH_MIN_SCORE: ${RAG_MATCH_MIN_SCORE:-0.20}
+    ports:
+      - "8502:8501"                       # 호스트 8502 → 컨테이너 8501
+    volumes:
+      - crack_agent_chroma:/app/knowledge/chroma   # MVP와 별도 인덱스 볼륨
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8501/_stcore/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+volumes:
+  crack_agent_chroma:
