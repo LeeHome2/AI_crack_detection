@@ -98,7 +98,10 @@ def main():
         client.delete_collection("safety_standards")
     except Exception:
         pass
-    col = client.get_or_create_collection("safety_standards")
+    # 거리 메트릭은 코사인. ChromaDB 기본은 L2(제곱 유클리드)라 정규화 안 된 Solar 벡터에서
+    # 1-distance 가 음수로 나와 RAG_MATCH_MIN_SCORE(코사인 관측 기준) 게이팅이 무의미해진다.
+    col = client.get_or_create_collection(
+        "safety_standards", metadata={"hnsw:space": "cosine"})
 
     docs, metas, ids, idx = [], [], [], 0
     no_meta = []

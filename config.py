@@ -110,14 +110,16 @@ EMBED_MODEL = "BAAI/bge-m3"   # 한국어 지원 오픈소스 임베딩
 
 # RAG는 관련도와 무관하게 항상 top-k를 반환하므로, Rule 가점은 유사도 임계값 이상일 때만.
 # (임계값 미설정 시 모든 사진이 +20을 받아 폰 테스트 계단식 보정이 깨짐)
-# 점수(=1-거리) 기준.
-# ※ Solar 실측 재보정: 관련 근거가 ~0.20~0.25 로 분포 → 0.55면 대부분 필터링돼 RAG가
-#    사실상 꺼짐. 그래서 Solar 분포에 맞춰 기본값 0.20 으로 낮춤.
-#    (임베더/문서 데이터가 바뀌면 분포 재관측 후 env RAG_MATCH_MIN_SCORE 로 조정)
+# 점수(=1-코사인거리) 기준. (build_index.py 가 컬렉션을 hnsw:space=cosine 으로 생성)
+# ※ Solar+코사인 실측(2026-07, 17문서·98청크):
+#     관련 근거 top-1 = 0.47~0.59, top-3 최저 ≈ 0.38 / 완전 off-topic 쿼리 최고 ≈ 0.18.
+#     → 두 밴드 사이 0.30 을 기본값으로. off-topic(+0.12)·관련(+0.08) 양쪽 마진 확보.
+#   (구 0.20 은 L2 기본거리에서 1-거리가 음수로 나오던 시절 값 — 코사인 전환으로 상향)
+#   (임베더/문서 데이터가 바뀌면 rag_smoke_test.py 로 분포 재관측 후 env 로 조정)
 try:
-    RAG_MATCH_MIN_SCORE = float(_env("RAG_MATCH_MIN_SCORE", "0.20") or "0.20")
+    RAG_MATCH_MIN_SCORE = float(_env("RAG_MATCH_MIN_SCORE", "0.30") or "0.30")
 except ValueError:
-    RAG_MATCH_MIN_SCORE = 0.20
+    RAG_MATCH_MIN_SCORE = 0.30
 
 # ---- 보고서 생성 (LLM) ----
 # 제공자 체인: claude(ANTHROPIC 키) → solar(UPSTAGE 키) → mock. auto면 사용 가능한 걸 자동 선택.
