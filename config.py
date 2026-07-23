@@ -82,14 +82,16 @@ DEFECT_WEIGHTS = {
     "crack": 0,            # crack 채널이 계산 → 복합 합산에서 중복 가점 방지
 }
 # 결함별 신뢰도 하한 — 이 값 미만 탐지는 위험 산정에서 무시(면적 결함 bbox는 신뢰도 높게 나옴).
-# ※ 재학습 후 실측 분포로 재보정(가이드 예시 0.92~0.81은 면적 결함에서 자연 도달 예상, 균열은 낮음).
+# ※ [잠정] 타일링 defect6_tiled-3 클래스별 AP50 순으로 조정(실측 conf 분포 아닌 성능 프록시).
+#   강한 클래스(철근노출 28%·균열 19%)는 낮춰 데모에서 뜨게, 약한 클래스(박리 4.7%·도장 7%)는
+#   높여 오탐 억제. analyze_model.py 의 실측 confidence 분포 나오면 최종 확정.
 DEFECT_CONF_MIN = {
-    "rebar_exposure": 0.35,
-    "steel_defect": 0.35,
-    "spalling": 0.35,
-    "efflorescence": 0.30,
-    "paint_damage": 0.40,
-    "crack": 0.20,
+    "rebar_exposure": 0.25,   # AP50 27.95% (최강) → 낮춰서 확실히 탐지
+    "steel_defect": 0.35,     # AP50 10.61% (중)
+    "spalling": 0.45,         # AP50 4.70% (최약) → 높여서 오탐 억제
+    "efflorescence": 0.35,    # AP50 9.56% (중약)
+    "paint_damage": 0.45,     # AP50 6.97% (약) → 높여서 오탐 억제
+    "crack": 0.20,            # AP50 18.75%, crack 채널이 별도 담당 → 유지
 }
 DEFECT_CONF_MIN_DEFAULT = 0.35
 # 동일 결함 다수 인스턴스 소폭 가산.
