@@ -17,27 +17,66 @@ from schemas import Stage
 
 GRADE_COLOR = {"정상": "#16a34a", "주의": "#d97706", "위험": "#dc2626", "긴급": "#7f1d1d"}
 
+# 결함별 시각 스타일 — 박스 색(BGR·cv2), 범례 색(hex), 한글명, 이미지 라벨(ASCII: cv2가 한글 못 그림)
+DEFECT_STYLE = {
+    "crack":          {"ko": "균열",      "code": "crack",  "bgr": (0, 0, 255),   "hex": "dc2626"},
+    "spalling":       {"ko": "박리/박락",  "code": "spall",  "bgr": (0, 140, 255), "hex": "f97316"},
+    "efflorescence":  {"ko": "백태/누수",  "code": "efflor", "bgr": (230, 160, 0), "hex": "0ea5e9"},
+    "rebar_exposure": {"ko": "철근노출",   "code": "rebar",  "bgr": (200, 0, 200), "hex": "c026d3"},
+    "steel_defect":   {"ko": "강재손상",   "code": "steel",  "bgr": (170, 70, 70), "hex": "4f46e5"},
+    "paint_damage":   {"ko": "도장손상",   "code": "paint",  "bgr": (0, 170, 0),   "hex": "16a34a"},
+}
+_DEFAULT_STYLE = {"ko": "결함", "code": "obj", "bgr": (0, 0, 255), "hex": "dc2626"}
+
+
+def _style(label):
+    return DEFECT_STYLE.get(label, _DEFAULT_STYLE)
+
 
 def annotate(img_bgr, det):
-    """탐지 박스 + 균열 중심선(스켈레톤) 오버레이 → RGB 반환."""
+    """결함별 색상 박스 + 라벨 + 균열 중심선(스켈레톤) 오버레이 → RGB 반환."""
     vis = img_bgr.copy()
-    # 스켈레톤(중심선): 노란색으로, 폰에서 보이게 살짝 두껍게
+    # 스켈레톤(중심선): 균열에만(면적 결함 제외) — features.skeleton_mask가 crack만 처리. 노란색.
     sk = features.skeleton_mask(img_bgr, det)
     if sk.any():
         sk = cv2.dilate(sk, np.ones((3, 3), np.uint8), iterations=1)
         vis[sk > 0] = (0, 255, 255)   # BGR 노란색
-    # 탐지 박스
+    # 결함별 색상 박스 + 라벨(코드+신뢰도)
     for d in det.detections:
         x1, y1, x2, y2 = d.box
-        cv2.rectangle(vis, (x1, y1), (x2, y2), (0, 0, 255), 3)
-        cv2.putText(vis, f"{d.conf:.2f}", (x1, max(0, y1 - 6)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        stl = _style(getattr(d, "label", "crack"))
+        col = stl["bgr"]
+        cv2.rectangle(vis, (x1, y1), (x2, y2), col, 3)
+        label = f"{stl['code']} {d.conf:.2f}"
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+        ly = max(th + 6, y1)
+        cv2.rectangle(vis, (x1, ly - th - 6), (x1 + tw + 6, ly), col, -1)
+        cv2.putText(vis, label, (x1 + 3, ly - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
     return cv2.cvtColor(vis, cv2.COLOR_BGR2RGB)
 
 
-st.set_page_config(page_title="균열 안전점검", page_icon="🧱", layout="centered")
-st.title("🧱 AI 균열 안전점검")
-st.caption("균열 사진을 찍거나 올리면 위험도를 판정하고 점검 보고서 초안을 만듭니다.")
+def defect_chips(det):
+    """탐지 결함 종류별 색상 칩(HTML) — 한글명 + 개수. 없으면 빈 문자열."""
+    if not det or not det.detections:
+        return ""
+    from collections import Counter
+    cnt = Counter(getattr(d, "label", "crack") for d in det.detections)
+    # crack 먼저, 그다음 개수 많은 순
+    order = sorted(cnt.items(), key=lambda kv: (kv[0] != "crack", -kv[1]))
+    chips = []
+    for label, c in order:
+        stl = _style(label)
+        chips.append(
+            f"<span style='display:inline-block;padding:3px 11px;margin:3px 4px 3px 0;"
+            f"border-radius:12px;background:#{stl['hex']};color:#fff;font-size:13px;"
+            f"font-weight:600'>{stl['ko']} {c}</span>")
+    return "".join(chips)
+
+
+st.set_page_config(page_title="시설물 안전점검", page_icon="🧱", layout="centered")
+st.title("🧱 AI 시설물 안전점검")
+st.caption("시설물 결함(균열·철근노출·박리·누수 등) 사진을 올리면 위험도를 판정하고 점검 보고서 초안을 만듭니다.")
 
 # ---- 사이드바: 시스템 상태 ----
 with st.sidebar:
@@ -129,18 +168,26 @@ st.markdown(
     unsafe_allow_html=True)
 st.write("")
 
-# 탐지 이미지 (박스 + 균열 중심선 오버레이)
-st.image(vis_rgb, use_container_width=True, caption=f"탐지된 균열 {feat.crack_count}개")
-st.caption("🟨 노란 선 = AI가 추출한 균열 중심선(OpenCV 스켈레톤) · 🟥 빨간 박스 = YOLO 탐지")
+# 탐지 이미지 (결함별 색상 박스 + 균열 중심선 오버레이)
+st.image(vis_rgb, use_container_width=True, caption="탐지 결과 (결함별 색상 구분)")
+_chips = defect_chips(state.detect)
+if _chips:
+    st.markdown("**탐지된 결함:** " + _chips, unsafe_allow_html=True)
+st.caption("🟨 노란 선 = 균열 중심선(OpenCV 스켈레톤) · 색상 박스 = 결함별 YOLO 탐지 (위 범례 색상)")
 if not detector.is_ready():
     st.warning("탐지 모델(best.pt)이 없어 박스가 표시되지 않습니다.")
 
 # 측정 특징·산정 근거 (접이식 — 모바일 화면 절약)
 with st.expander("측정 특징 · 위험도 산정 근거"):
-    st.json({"균열 개수": feat.crack_count,
-             "최고 신뢰도": feat.max_confidence,
+    _info = {"균열 개수": feat.crack_count,
+             "최고 신뢰도(균열)": feat.max_confidence,
              "최장 길이 비율": feat.max_length_ratio,
-             "평균 폭(px)": feat.avg_width_px})
+             "평균 폭(px)": feat.avg_width_px}
+    if getattr(feat, "defects", None):
+        _info["복합 결함(균열 외)"] = {
+            config.DEFECT_KO.get(k, k): {"개수": v.get("count"), "최고신뢰도": v.get("max_conf")}
+            for k, v in feat.defects.items()}
+    st.json(_info)
     st.markdown("**Rule 기여 내역**")
     if risk.contributions:
         st.table(risk.contributions)
