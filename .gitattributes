@@ -1,3 +1,4 @@
 # 쉘 스크립트는 항상 LF (Windows 체크아웃 시 CRLF로 깨져 컨테이너에서 실패 방지)
 *.sh text eol=lf
 entrypoint.sh text eol=lf
+knowledge/sources/*.pdf filter=lfs diff=lfs merge=lfs -text
