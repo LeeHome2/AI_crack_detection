@@ -20,11 +20,13 @@ def _env(name, default=""):
 
 # ---- 모델 ----
 # 타일 학습본 (train_tiled_full). 없으면 앱이 안내 메시지 표시.
-# ※ 2차 MVP(복합 결함) 컨테이너는 env YOLO_WEIGHTS 로 6종 가중치(runs/detect/defect6/...)를
-#   가리키고, 1차 MVP(8502·균열 전용)는 기본값 유지 → 두 컨테이너가 다른 모델을 쓴다.
-YOLO_WEIGHTS = _env("YOLO_WEIGHTS", "") or os.path.join(
-    BASE_DIR, "runs", "detect", "runs", "crack", "train_tiled_full", "weights", "best.pt"
-)
+# ※ 2차 MVP(복합) 컨테이너는 env YOLO_WEIGHTS 로 6종 가중치를 가리키고, 1차 MVP(8502·균열)는
+#   기본값 유지 → 두 컨테이너가 다른 모델. env 경로가 '실제 존재할 때만' 사용하고, 없으면
+#   크랙 기본으로 폴백 → 6종 모델 미커밋 상태로 배포해도 크랙 모델로 안전하게 동작.
+_YOLO_DEFAULT = os.path.join(
+    BASE_DIR, "runs", "detect", "runs", "crack", "train_tiled_full", "weights", "best.pt")
+_YOLO_ENV = _env("YOLO_WEIGHTS", "")
+YOLO_WEIGHTS = _YOLO_ENV if (_YOLO_ENV and os.path.exists(_YOLO_ENV)) else _YOLO_DEFAULT
 
 # ---- 타일 슬라이스 추론 ----
 TILE = 640
