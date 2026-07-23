@@ -18,7 +18,7 @@ tile_split_6class.py 로 dataset_6class_tiled 생성 후 실행.
 """
 from ultralytics import YOLO
 
-DATA = r"D:\crack_detection\dataset_6class_tiled\data.yaml"
+DATA = r"C:\dataset_6class_tiled_small\data.yaml"  # SSD 타일 데이터 (20% 빠른 테스트)
 
 
 def main():

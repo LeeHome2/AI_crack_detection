@@ -21,8 +21,8 @@ import random
 import cv2
 
 # ================== 설정 ==================
-SRC = r"D:\crack_detection\dataset_6class"        # convert_aihub_6class_to_yolo.py 출력
-OUT = r"D:\crack_detection\dataset_6class_tiled"
+SRC = r"C:\dataset_6class"        # SSD에 복사된 원본
+OUT = r"C:\dataset_6class_tiled_small"  # SSD에 타일 출력 (20% 빠른 테스트)
 
 TILE = 640
 OVERLAP = 0.2
@@ -30,8 +30,8 @@ MIN_BOX_KEEP = 0.25
 BIG_KEEP_FRAC = 0.12
 MIN_BOX_PX = 6
 EMPTY_TILE_RATIO = 0.10
-SUBSET_TRAIN = None    # None=전체, 숫자=원본 그만큼만(빠른 시험)
-SUBSET_VAL = None
+SUBSET_TRAIN = 4000    # 20% subset (원본 18293장 중 4000장)
+SUBSET_VAL = 800       # 20% subset (원본 4155장 중 800장)
 SEED = 0
 
 CLASS_NAMES = ["crack", "spalling", "efflorescence", "rebar_exposure",
