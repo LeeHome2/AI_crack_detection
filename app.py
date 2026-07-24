@@ -74,13 +74,17 @@ def defect_chips(det):
     return "".join(chips)
 
 
-st.set_page_config(page_title="시설물 안전점검", page_icon="🧱", layout="centered")
+st.set_page_config(page_title=f"시설물 안전점검 · {config.APP_VARIANT}",
+                   page_icon="🧱", layout="centered")
 st.title("🧱 AI 시설물 안전점검")
+st.caption(f"🏷️ **{config.APP_VARIANT}** — {config.APP_VARIANT_DESC}")
 st.caption("시설물 결함(균열·철근노출·박리·누수 등) 사진을 올리면 위험도를 판정하고 점검 보고서 초안을 만듭니다.")
 
 # ---- 사이드바: 시스템 상태 ----
 with st.sidebar:
     st.header("시스템 상태")
+    st.write(f"🏷️ 배포 라인: **{config.APP_VARIANT}**")
+    st.caption(config.APP_VARIANT_DESC)
     _tri = triage.provider_label()
     st.write(f"{'🟢' if _tri == 'Claude 비전' else '🟡'} 1차 트리아지: {_tri}")
     st.write("🟢 탐지 모델" if detector.is_ready() else "🔴 탐지 모델 (가중치 없음)")

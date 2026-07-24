@@ -1,6 +1,9 @@
-# 고도화(develop) 전용 컨테이너 — MVP(main, 8501)와 분리 실행.
+# 8502 = 1차 MVP (균열 전용) · 크랙 안전판(동결 라인). 8501(복합 6종·CD 자동)과 분리 실행.
+#   ※ 역할 정정(2차 MVP 도입 시 스왑됨): 8501=복합 CD 자동 / 8502=크랙 안전판 수동.
+#   화면 라벨은 config.APP_VARIANT 가 실제 로드 모델로 자동 표기(크랙→"1차 MVP").
+#   (service/container명 crack-agent-* 는 실행 중 컨테이너 정체성 유지 위해 그대로 둠 — 재빌드 시 orphan 방지)
 # 실행: docker compose -f docker-compose.dev.yml up -d --build   (호스트 포트 8502)
-# 별도 project명·container명·볼륨·포트라 MVP 컨테이너와 충돌하지 않음.
+# 별도 project명·container명·볼륨·포트라 8501 복합 컨테이너와 충돌하지 않음.
 name: crack-agent
 
 services:

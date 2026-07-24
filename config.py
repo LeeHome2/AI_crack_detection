@@ -178,3 +178,19 @@ STATE_GRADE_MAP = {
 
 # ---- 모델 성능 지표 (학습 결과, 화면 표시용) ----
 MODEL_METRICS = {"mAP50": 0.179, "mAP50_95": 0.062, "precision": 0.285, "recall": 0.242}
+
+# ---- 배포 빌드 식별 (화면 표시용) ----
+# 8501(복합·CD 자동)과 8502(크랙 안전판·동결)을 화면에서 눈으로 구분하기 위한 라벨.
+# 원칙: '실제 로드된 가중치'로 자동 판별 → 라벨이 실제 모델과 어긋나지 않음(정직).
+#   경로에 'defect6' 있으면 복합(2차), 아니면 크랙 폴백 포함 균열(1차).
+# 필요 시 APP_VARIANT/APP_VARIANT_DESC env 로 강제 지정 가능(자동판별보다 우선).
+def _auto_variant():
+    w = (YOLO_WEIGHTS or "").replace("\\", "/").lower()
+    if "defect6" in w:
+        return ("2차 MVP", "복합 6종 (균열·박리·백태·철근노출·강재·도장)")
+    return ("1차 MVP", "균열 전용 · 크랙 안전판")   # 크랙 폴백 포함 기본
+
+
+_AUTO_VARIANT = _auto_variant()
+APP_VARIANT = _env("APP_VARIANT", "") or _AUTO_VARIANT[0]
+APP_VARIANT_DESC = _env("APP_VARIANT_DESC", "") or _AUTO_VARIANT[1]
