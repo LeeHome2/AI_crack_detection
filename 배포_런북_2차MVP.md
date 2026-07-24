@@ -16,6 +16,37 @@
 
 ---
 
+## 0-1. ⚠️ 서버 `.env`는 CD가 못 건드린다 (수동 관리)
+
+`.env`는 `.gitignore` 대상이라 **CD의 `git pull`로 절대 갱신되지 않는다.** 서버 인스턴스의 `.env`는 사람이 직접 고쳐야 한다.
+
+**왜 위험한가** — `docker-compose.yml`의 `${VAR:-기본값}`은 두 경로로 `.env`에 진다:
+1. `env_file: .env` → 컨테이너 환경변수로 **직접 주입**
+2. compose가 프로젝트 디렉터리의 `.env`를 **변수 보간에도 자동 사용**
+
+즉 compose 기본값을 아무리 고쳐도 **서버 `.env`에 같은 키가 있으면 그 값이 이긴다.** 커밋된 설정과 실제 구동값이 조용히 갈라지고, 앱은 죽지 않으므로 눈치채기 어렵다.
+
+**실제 사고 (2026-07-24)** — `RAG_MATCH_MIN_SCORE`를 코사인 재보정에 맞춰 compose 기본값 `0.20 → 0.30`으로 고쳤으나, 서버 `.env:19`에 구 L2 시절 값 `0.20`이 남아 있어 **배포 후에도 0.20으로 돌고 있었다.** 서버에서 `.env`를 직접 고쳐야 해소됨.
+
+**설정값을 바꿀 때 체크리스트**
+```bash
+# 1) 서버 .env에 같은 키가 박혀 있는지 먼저 확인 (있으면 compose 기본값은 무시됨)
+grep -nE 'RAG_MATCH_MIN_SCORE|YOLO_WEIGHTS|EMBED_PROVIDER|APP_VARIANT' .env
+
+# 2) 고칠 땐 백업 먼저 (API 키가 든 파일)
+cp .env .env.bak.$(date +%Y%m%d)
+
+# 3) 반영엔 재빌드 불필요 — 재기동만으로 env_file 재주입됨
+docker compose up -d
+
+# 4) '커밋된 값'이 아니라 '컨테이너가 실제로 보는 값'으로 검증
+docker compose exec -T crack-app python -c "import config; print(config.RAG_MATCH_MIN_SCORE)"
+```
+
+> 원칙: 설정 검증은 **항상 컨테이너 안에서** 한다. 호스트에서 `python -c "import config"`로 찍은 값은 서버 `.env`·compose 주입을 반영하지 않아 서로 다를 수 있다.
+
+---
+
 ## Phase 0 — 배포 전 로컬 검증 (데스크탑)
 
 학습 끝난 직후, 서버에 올리기 전에 로컬에서 먼저 확인.
