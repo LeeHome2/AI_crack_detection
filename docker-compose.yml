@@ -20,10 +20,11 @@ services:
       EMBED_PROVIDER: ${EMBED_PROVIDER:-solar}
       SERVICE_PORT: ${SERVICE_PORT:-8501}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-5}
-      # Solar 실측 분포에 맞춘 값(0.20). 0.55면 근거가 대부분 필터링돼 RAG가 사실상 꺼짐.
-      RAG_MATCH_MIN_SCORE: ${RAG_MATCH_MIN_SCORE:-0.20}
-      # 6종 복합 모델 경로(커밋 시 자동 사용). 파일 없으면 config가 크랙 타일 모델로 폴백.
-      YOLO_WEIGHTS: ${YOLO_WEIGHTS:-/app/runs/detect/defect6_v2/weights/best.pt}
+      # 코사인 전환 후 실측 재보정값(0.30). off-topic 최고 0.18 / 관련 최저 0.38 사이 마진.
+      #  ※ 0.20은 구 L2거리 시절 값 — 코사인에선 무관 사진도 근거 가점 받을 여지(마진 0.02)라 상향.
+      RAG_MATCH_MIN_SCORE: ${RAG_MATCH_MIN_SCORE:-0.30}
+      # 6종 타일링 best(커밋됨·LFS). 파일 없으면 config 후보가 통짜→크랙으로 자동 폴백.
+      YOLO_WEIGHTS: ${YOLO_WEIGHTS:-/app/models/yolov8s_defect6_tiled_best.pt}
     ports:
       - "${SERVICE_PORT:-8501}:8501"
     volumes:

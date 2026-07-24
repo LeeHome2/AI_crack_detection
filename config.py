@@ -34,11 +34,12 @@ def _real_weights(p):
 
 
 _YOLO_CANDIDATES = [
-    _env("YOLO_WEIGHTS", ""),                                        # 명시 지정 최우선
-    os.path.join(BASE_DIR, "models", "yolov8s_defect6_final.pt"),   # 6종 최종(학습완료)
-    os.path.join(BASE_DIR, "models", "yolov8s_defect6_epoch43.pt"),  # 6종 임시
+    _env("YOLO_WEIGHTS", ""),                                            # 명시 지정 최우선
+    os.path.join(BASE_DIR, "models", "yolov8s_defect6_tiled_best.pt"),  # 6종 타일링 best(13.1%, 최우선)
+    os.path.join(BASE_DIR, "models", "yolov8s_defect6_final.pt"),       # 6종 통짜(10.8%)
+    os.path.join(BASE_DIR, "models", "yolov8s_defect6_epoch43.pt"),      # 6종 임시
     os.path.join(BASE_DIR, "runs", "detect", "defect6_v2", "weights", "best.pt"),
-    _YOLO_CRACK,                                                     # 균열 안전판
+    _YOLO_CRACK,                                                         # 균열 안전판
 ]
 YOLO_WEIGHTS = next((p for p in _YOLO_CANDIDATES if _real_weights(p)), _YOLO_CRACK)
 
@@ -177,7 +178,16 @@ STATE_GRADE_MAP = {
 }
 
 # ---- 모델 성능 지표 (학습 결과, 화면 표시용) ----
-MODEL_METRICS = {"mAP50": 0.179, "mAP50_95": 0.062, "precision": 0.285, "recall": 0.242}
+# 로드된 가중치에 맞춰 자동 선택(라벨과 동일 원칙) → 화면 지표가 실제 모델과 어긋나지 않음.
+#   복합(defect6 타일링): 실험보고서 defect6_tiled-3 값 / 균열: 크랙 타일 모델 값.
+def _auto_metrics():
+    w = (YOLO_WEIGHTS or "").replace("\\", "/").lower()
+    if "defect6" in w:
+        return {"mAP50": 0.131, "mAP50_95": 0.046, "precision": 0.233, "recall": 0.204}
+    return {"mAP50": 0.179, "mAP50_95": 0.062, "precision": 0.285, "recall": 0.242}
+
+
+MODEL_METRICS = _auto_metrics()
 
 # ---- 배포 빌드 식별 (화면 표시용) ----
 # 8501(복합·CD 자동)과 8502(크랙 안전판·동결)을 화면에서 눈으로 구분하기 위한 라벨.
