@@ -168,6 +168,15 @@ feat, risk, rag_res, rep = state.features, state.risk, state.rag, state.report
 # ---- 2) 판정 결과 (세로 스택) ----
 st.subheader("2) 판정 결과")
 
+# 탐지 0건 백스톱 — 트리아지는 통과했으나 모델이 아무 결함도 못 잡은 경우.
+#  원거리·전경이면 근접 재촬영을 권고(확신 있는 '정상' 오해 방지). 실제 무결함일 수도 있어 중립적 안내.
+_ndet = len(getattr(state.detect, "detections", None) or []) if state.detect is not None else 0
+if _ndet == 0:
+    st.warning(
+        "🔍 **결함이 탐지되지 않았습니다.** 실제로 결함이 없는 상태이거나, "
+        "원거리·전경으로 촬영돼 결함이 너무 작게 찍혔을 수 있어요. "
+        "결함이 의심되면 해당 부위에 **가까이 다가가 화면을 채우도록 다시 촬영**해 주세요.")
+
 # 위험도 카드 (헤드라인)
 color = GRADE_COLOR.get(risk.grade, "#334155")
 st.markdown(
