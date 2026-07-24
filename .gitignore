@@ -26,6 +26,11 @@ knowledge/chroma/
 
 # === 비밀키 (절대 커밋 금지) ===
 .env
+# .env 는 정확히 그 이름만 매칭 → 백업·변형본(.env.bak.YYYYMMDD, .env.local 등)이 그대로 노출된다.
+# 공개 저장소라 `git add -A` 한 번이면 API 키가 올라가므로 파생 파일까지 전부 차단하고
+# .env.example(키 없는 템플릿)만 예외로 되살린다. (.dockerignore 에는 이미 동일 패턴 존재)
+.env.*
+!.env.example
 key/
 *PAT*
 *token*
