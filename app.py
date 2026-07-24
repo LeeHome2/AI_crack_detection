@@ -74,6 +74,12 @@ def defect_chips(det):
     return "".join(chips)
 
 
+def _no_strike(s) -> str:
+    """RAG/문서 원문의 등급구간 표기(0.1~0.3 등)가 마크다운 취소선(~..~)으로
+    깨지는 것 방지. 단일 물결표만 이스케이프 → 표·굵게 등 다른 서식은 보존."""
+    return str(s).replace("~", "\\~")
+
+
 st.set_page_config(page_title=f"시설물 안전점검 · {config.APP_VARIANT}",
                    page_icon="🧱", layout="centered")
 st.title("🧱 AI 시설물 안전점검")
@@ -203,7 +209,7 @@ with st.expander("📚 안전기준 근거 (RAG)", expanded=bool(rag_res.evidenc
     if rag_res.evidences:
         for e in rag_res.evidences:
             src = f"[{e.source}]({e.url})" if e.url else e.source
-            st.markdown(f"> {e.text}  \n_근거 출처: {src} (유사도 {e.score})_")
+            st.markdown(f"> {_no_strike(e.text)}  \n_근거 출처: {src} (유사도 {e.score})_")
     else:
         st.info("RAG 지식베이스가 아직 구축되지 않았습니다. build_index 실행 후 표시됩니다.")
 
@@ -214,7 +220,7 @@ st.caption(f"※ 보고서 LLM: {_prov}" + ("  (LLM 키 없음 → 템플릿 목
 report_md = rep.to_markdown()
 for _title, _attr in rep.SECTIONS:
     st.markdown(f"#### {_title}")
-    st.markdown(getattr(rep, _attr))
+    st.markdown(_no_strike(getattr(rep, _attr)))
 st.download_button(
     "📄 보고서 초안 내려받기 (.md)",
     data=report_md,

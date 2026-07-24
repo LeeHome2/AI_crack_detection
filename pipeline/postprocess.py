@@ -91,4 +91,6 @@ def physical_crack_count(img_bgr, det: DetectResult) -> int:
         return len(det.detections)
     sk = cv2.dilate(sk, np.ones((5, 5), np.uint8), iterations=2)
     n, _ = cv2.connectedComponents(sk)
-    return max(1, n - 1)
+    # 이 보정의 목적은 '쪼개진 박스를 하나로 합쳐 개수를 줄이는' 것 → 박스 수를 넘을 수 없다.
+    # 중심선이 잡음·끊김으로 조각나면 오히려 늘 수 있어, 탐지 박스 수로 상한을 둔다.
+    return max(1, min(len(det.detections), n - 1))
