@@ -138,10 +138,15 @@ if img is None:
 # ---- 세션 캐시: 같은 사진이면 재분석 안 함 (Streamlit 재실행 대비) ----
 h = orchestrator.image_hash(data)
 if st.session_state.get("hash") != h:
-    with st.spinner("분석 중..."):
-        state = orchestrator.analyze(img, h)
+    with st.status("분석 준비 중…", expanded=True) as _status:
+        def _prog(label):
+            _status.update(label=label + " …")
+            st.write("✔ " + label)
+        state = orchestrator.analyze(img, h, progress=_prog)
         # 트리아지 게이트로 조기 반환되면 detect 없음 → 어노테이트 생략
         vis_rgb = annotate(img, state.detect) if state.detect is not None else None
+        _done = "재촬영 안내" if state.detect is None else "분석 완료"
+        _status.update(label=_done, state="complete", expanded=False)
     st.session_state.update({"hash": h, "state": state, "vis": vis_rgb})
 
 state = st.session_state["state"]

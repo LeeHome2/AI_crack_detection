@@ -83,14 +83,17 @@ def filter_seams(img_bgr, det: DetectResult) -> DetectResult:
 
 
 def physical_crack_count(img_bgr, det: DetectResult) -> int:
-    """탐지 박스들의 균열 중심선 → dilate로 인접 조각 연결 → 연결요소 수 = 물리적 개수."""
-    if not det.detections:
+    """균열(crack) 박스들의 중심선 → dilate로 인접 조각 연결 → 연결요소 수 = 물리적 개수.
+    ※ 2차(복합) 모델에선 det.detections 에 백태·도장 등 비균열 결함이 섞여 있으므로
+      반드시 crack 라벨만 센다(전체 탐지 수를 쓰면 백태·도장을 균열로 오인)."""
+    crack_dets = [d for d in (det.detections or [])
+                  if getattr(d, "label", "crack") == "crack"]
+    if not crack_dets:
         return 0
-    sk = skeleton_mask(img_bgr, det)
+    sk = skeleton_mask(img_bgr, det)   # skeleton_mask 는 이미 crack 박스만 그린다
     if not sk.any():
-        return len(det.detections)
+        return len(crack_dets)
     sk = cv2.dilate(sk, np.ones((5, 5), np.uint8), iterations=2)
     n, _ = cv2.connectedComponents(sk)
-    # 이 보정의 목적은 '쪼개진 박스를 하나로 합쳐 개수를 줄이는' 것 → 박스 수를 넘을 수 없다.
-    # 중심선이 잡음·끊김으로 조각나면 오히려 늘 수 있어, 탐지 박스 수로 상한을 둔다.
-    return max(1, min(len(det.detections), n - 1))
+    # 이 보정의 목적은 '쪼개진 박스를 하나로 합쳐 개수를 줄이는' 것 → 균열 박스 수를 넘을 수 없다.
+    return max(1, min(len(crack_dets), n - 1))
