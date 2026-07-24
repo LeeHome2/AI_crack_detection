@@ -58,14 +58,31 @@ jobs:
           git fetch origin --quiet
           git checkout main --quiet 2>/dev/null || git checkout -B main origin/main
           git reset --hard origin/main
+          # ── LFS 보장 (없으면 *.pt 가 133B 포인터로 구워져 앱이 '조용히' 크랙 폴백) ──
+          echo "[deploy] git-lfs 확인 + 실제 모델(*.pt)·원문 PDF 내려받기"
+          if ! command -v git-lfs >/dev/null 2>&1; then
+            echo "[deploy] git-lfs 미설치 → 설치 (passwordless sudo 필요)"
+            sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git-lfs
+          fi
+          git lfs install --local
+          git lfs pull origin          # 포인터 → 실제 22.5MB 가중치 (빌드 COPY 전에 완료돼야 함)
           echo "[deploy] docker compose up -d --build"
           docker compose up -d --build
           echo "[deploy] health check"
+          healthy=false
           for i in $(seq 1 40); do
             if curl -fsS http://127.0.0.1:8501/_stcore/health >/dev/null 2>&1; then
-              echo "[deploy] healthy ✓"; exit 0
+              healthy=true; break
             fi
             sleep 3
           done
-          echo "[deploy] health check 실패"; docker compose ps || true; docker compose logs --tail 40 || true; exit 1
+          if [ "$healthy" != true ]; then
+            echo "[deploy] health check 실패"; docker compose ps || true; docker compose logs --tail 40 || true; exit 1
+          fi
+          # ── 스모크: 실제 로드 모델·라벨 검증 → 크랙 '조용한 폴백'을 배포 실패로 잡는다 ──
+          echo "[deploy] 스모크: 로드 가중치·라벨·detector 확인"
+          docker compose exec -T crack-app python -c "import sys, config; from pipeline import detector; w=(config.YOLO_WEIGHTS or '').lower(); print('[smoke] VARIANT=%s | WEIGHTS=%s | detector_ready=%s | mAP50=%s' % (config.APP_VARIANT, config.YOLO_WEIGHTS.split('/')[-1], detector.is_ready(), config.MODEL_METRICS['mAP50'])); sys.exit(0 if ('defect6' in w and detector.is_ready()) else 1)" \
+            || { echo '[deploy] ⚠ 복합 모델 미로드(크랙 폴백) 또는 detector 미준비 → 배포 실패 처리 (LFS pull 확인 필요)'; exit 1; }
+          echo "[deploy] healthy ✓ · 복합 모델 로드 확인 ✓"
           REMOTE
