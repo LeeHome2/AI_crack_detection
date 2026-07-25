@@ -50,6 +50,7 @@ YOLO_WEIGHTS = next((p for p in _YOLO_CANDIDATES if _real_weights(p)), _YOLO_CRA
 SEG_HYBRID_ENABLED = _env("SEG_HYBRID_ENABLED", "0") not in ("0", "false", "no", "off", "")
 _SEG_CANDIDATES = [
     _env("SEG_WEIGHTS", ""),
+    os.path.join(BASE_DIR, "models", "yolov8s_seg_crack_tiled_best.pt"),  # 실제 커밋 파일(72.2% mask)
     os.path.join(BASE_DIR, "models", "yolov8s_seg_crack_best.pt"),
     os.path.join(BASE_DIR, "runs", "segment", "seg_crack", "weights", "best.pt"),
 ]
