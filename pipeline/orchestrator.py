@@ -9,8 +9,9 @@
 """
 import hashlib
 
-from pipeline import triage, detector, features, rules, rag, report, postprocess
-from schemas import AgentState, Stage
+import config
+from pipeline import triage, detector, features, rules, rag, report, postprocess, segmenter
+from schemas import AgentState, Stage, DetectResult
 
 
 def image_hash(data: bytes) -> str:
@@ -36,9 +37,23 @@ def analyze(img_bgr, image_hash_str: str = "", progress=None) -> AgentState:
         return state
 
     _p("② 결함 탐지 (YOLO 타일 추론)")
-    state.detect = detector.detect(img_bgr)
+    det = detector.detect(img_bgr)
     # 후처리: 이음새(타일 줄눈 등) 오탐 박스 제거 → 이후 특징·위험도·근거·보고서에 반영
-    state.detect = postprocess.filter_seams(img_bgr, state.detect)
+    det = postprocess.filter_seams(img_bgr, det)
+
+    # [고도화·기본 OFF] seg 하이브리드: 균열은 seg 마스크에서, 면적결함은 bbox에서.
+    #   활성 + seg 준비됐을 때만. 예외 시 조용히 bbox 단독으로 폴백(데모 안전).
+    if config.SEG_HYBRID_ENABLED and segmenter.is_ready():
+        try:
+            _p("② 균열 세그멘테이션 (하이브리드)")
+            seg_res, _mask = segmenter.segment(img_bgr)
+            merged = DetectResult(image_size=det.image_size)
+            merged.detections = [d for d in det.detections if d.label != "crack"]
+            merged.detections += seg_res.detections   # 균열=seg 마스크 성분으로 대체
+            det = merged
+        except Exception as e:
+            print(f"[orchestrator] seg 하이브리드 실패 → bbox 폴백: {e}")
+    state.detect = det
 
     _p("③ 형태 특징 추출 (OpenCV)")
     state.features = features.extract(img_bgr, state.detect)

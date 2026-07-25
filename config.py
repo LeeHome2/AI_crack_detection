@@ -43,6 +43,22 @@ _YOLO_CANDIDATES = [
 ]
 YOLO_WEIGHTS = next((p for p in _YOLO_CANDIDATES if _real_weights(p)), _YOLO_CRACK)
 
+# ---- [고도화] 균열 세그멘테이션 하이브리드 (균열=seg / 면적결함=bbox) ----
+# 기본 OFF. seg best.pt 성능·비주얼 검증 후 SEG_HYBRID_ENABLED=1 로 활성(env).
+#   활성 시: 균열은 seg 마스크에서, 면적결함(철근노출·박리 등)은 기존 bbox에서 → orchestrator가 합침.
+#   비활성/모델없음/로드실패 → 기존 bbox 단독 경로로 안전 폴백(앱 동작 불변).
+SEG_HYBRID_ENABLED = _env("SEG_HYBRID_ENABLED", "0") not in ("0", "false", "no", "off", "")
+_SEG_CANDIDATES = [
+    _env("SEG_WEIGHTS", ""),
+    os.path.join(BASE_DIR, "models", "yolov8s_seg_crack_best.pt"),
+    os.path.join(BASE_DIR, "runs", "segment", "seg_crack", "weights", "best.pt"),
+]
+SEG_WEIGHTS = next((p for p in _SEG_CANDIDATES if _real_weights(p)), "")
+try:
+    SEG_CONF = float(_env("SEG_CONF", "0.25") or "0.25")
+except ValueError:
+    SEG_CONF = 0.25
+
 # ---- 타일 슬라이스 추론 ----
 TILE = 640
 OVERLAP = 0.2
