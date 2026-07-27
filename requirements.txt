@@ -13,3 +13,4 @@ requests>=2.31            # Solar(Upstage) 임베딩 API 호출 (EMBED_PROVIDER=
 
 # 보고서 생성 (report.py)
 anthropic>=0.40
+fpdf2

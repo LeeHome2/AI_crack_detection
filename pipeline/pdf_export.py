@@ -19,6 +19,8 @@ try:
     _HAS_FPDF = True
 except ImportError:
     _HAS_FPDF = False
+    FPDF = object   # 임포트 안전: fpdf 미설치 시에도 모듈·클래스 정의는 되게(실사용은 is_available/generate_pdf가 차단)
+                    # app.py가 최상단에서 이 모듈을 import하므로 여기서 죽으면 앱 전체가 안 뜸.
 
 from schemas import Report, RiskResult
 
