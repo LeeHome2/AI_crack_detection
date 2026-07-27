@@ -110,6 +110,13 @@ try:
 except ValueError:
     SEAM_STRAIGHTNESS_MAX = 0.030
 
+# 겹침 박스 병합: 타일 기반 검출에서 여러 조각으로 쪼개진 균열을 하나로 합침
+MERGE_OVERLAP_ENABLED = _env("MERGE_OVERLAP_ENABLED", "1") not in ("0", "false", "no", "off", "")
+try:
+    MERGE_OVERLAP_MARGIN = int(_env("MERGE_OVERLAP_MARGIN", "30") or "30")  # 박스 간격 허용치 (픽셀)
+except ValueError:
+    MERGE_OVERLAP_MARGIN = 30
+
 # ---- Rule Engine 임계값 ----
 # ※ 재보정: 이 모델은 신뢰도가 낮게 압축돼 있음(폰 100장 테스트 max 0.36).
 #   기획안의 0.80은 잘 보정된 0~1 신뢰도 가정 → 도달 불가라 실제 분포에 맞춰 계단식으로.

@@ -82,6 +82,103 @@ def filter_seams(img_bgr, det: DetectResult) -> DetectResult:
     return out
 
 
+def _boxes_overlap(b1, b2, margin=0):
+    """두 박스가 겹치는지 (margin으로 여유 허용)."""
+    x1a, y1a, x2a, y2a = b1
+    x1b, y1b, x2b, y2b = b2
+    return not (x2a + margin < x1b or x2b + margin < x1a or
+                y2a + margin < y1b or y2b + margin < y1a)
+
+
+def _find_groups(boxes, margin=0):
+    """겹치는 박스들을 그룹으로 묶기 (Union-Find)."""
+    n = len(boxes)
+    parent = list(range(n))
+
+    def find(i):
+        if parent[i] != i:
+            parent[i] = find(parent[i])
+        return parent[i]
+
+    def union(i, j):
+        pi, pj = find(i), find(j)
+        if pi != pj:
+            parent[pi] = pj
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if _boxes_overlap(boxes[i], boxes[j], margin):
+                union(i, j)
+
+    groups = {}
+    for i in range(n):
+        root = find(i)
+        if root not in groups:
+            groups[root] = []
+        groups[root].append(i)
+
+    return list(groups.values())
+
+
+def merge_overlapping_boxes(det: DetectResult, label_filter="crack", margin=20) -> DetectResult:
+    """겹치는 박스들을 하나로 합침 (타일 중복 제거용).
+
+    Args:
+        det: 검출 결과
+        label_filter: 합칠 라벨 (기본 "crack"). None이면 전체.
+        margin: 박스 간격 허용치 (픽셀). 이 거리 내면 겹치는 것으로 간주.
+    """
+    if not det.detections:
+        return det
+
+    # 필터링할 라벨과 나머지 분리
+    target_dets = []
+    other_dets = []
+    for d in det.detections:
+        if label_filter is None or d.label == label_filter:
+            target_dets.append(d)
+        else:
+            other_dets.append(d)
+
+    if len(target_dets) <= 1:
+        return det
+
+    # 박스 좌표 추출
+    boxes = [d.box for d in target_dets]
+
+    # 겹치는 박스 그룹 찾기
+    groups = _find_groups(boxes, margin)
+
+    # 그룹별로 합쳐서 새 박스 생성
+    from schemas import Detection
+    merged_dets = []
+
+    for group in groups:
+        group_boxes = [boxes[i] for i in group]
+        group_confs = [target_dets[i].conf for i in group]
+
+        # 합친 박스 = 그룹 내 모든 박스를 포함하는 최소 박스
+        x1 = min(b[0] for b in group_boxes)
+        y1 = min(b[1] for b in group_boxes)
+        x2 = max(b[2] for b in group_boxes)
+        y2 = max(b[3] for b in group_boxes)
+
+        # 최대 confidence 사용
+        max_conf = max(group_confs)
+
+        merged_dets.append(Detection(
+            box=[int(x1), int(y1), int(x2), int(y2)],
+            conf=round(max_conf, 3),
+            cls=target_dets[group[0]].cls,
+            label=target_dets[group[0]].label
+        ))
+
+    # 결과 조합
+    out = DetectResult(image_size=det.image_size)
+    out.detections = merged_dets + other_dets
+    return out
+
+
 def physical_crack_count(img_bgr, det: DetectResult) -> int:
     """균열(crack) 박스들의 중심선 → dilate로 인접 조각 연결 → 연결요소 수 = 물리적 개수.
     ※ 2차(복합) 모델에선 det.detections 에 백태·도장 등 비균열 결함이 섞여 있으므로

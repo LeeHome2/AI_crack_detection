@@ -46,6 +46,11 @@ def analyze(img_bgr, image_hash_str: str = "", progress=None, skip_report=False)
     # 후처리: 이음새(타일 줄눈 등) 오탐 박스 제거 → 이후 특징·위험도·근거·보고서에 반영
     det = postprocess.filter_seams(img_bgr, det)
 
+    # 후처리: 겹치는 균열 박스 병합 (타일 중복 제거)
+    if config.MERGE_OVERLAP_ENABLED:
+        det = postprocess.merge_overlapping_boxes(det, label_filter="crack",
+                                                   margin=config.MERGE_OVERLAP_MARGIN)
+
     # [고도화·기본 OFF] seg 하이브리드: 균열은 seg 마스크에서, 면적결함은 bbox에서.
     #   활성 + seg 준비됐을 때만. 예외 시 조용히 bbox 단독으로 폴백(데모 안전).
     crack_mask = None
