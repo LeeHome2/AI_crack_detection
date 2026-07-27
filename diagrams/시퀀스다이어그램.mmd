@@ -1,0 +1,26 @@
+sequenceDiagram
+  autonumber
+  actor U as 사용자(모바일)
+  participant App as Streamlit 앱
+  participant T as 비전 트리아지(Claude)
+  participant D as 탐지(YOLO bbox+seg)
+  participant F as 특징(OpenCV/마스크)
+  participant R as Rule 엔진
+  participant K as RAG(ChromaDB·Solar)
+  participant L as 보고서 LLM
+  U->>App: 사진 업로드
+  App->>T: 적합성 게이트 + 메타 추출
+  alt 부적합 (원거리·흐림·비대상)
+    T-->>U: 재촬영 안내 → 종료
+  else 적합
+    T-->>App: ok + 육안 소견(defects_observed)
+    App->>D: 결함 탐지
+    Note over D: 균열=seg 마스크(72.2%)<br/>면적결함=bbox
+    D-->>F: 탐지 결과(+마스크)
+    F->>R: 특징(길이·폭·개수·복합)
+    R->>K: 관련 안전기준 검색
+    K-->>R: 근거 문장(기준명·URL·유사도)
+    R-->>App: 위험도 등급(정상~긴급)+기여내역
+    App->>L: 6섹션 보고서 생성
+    L-->>U: 등급 + 근거(RAG) + 보고서 초안
+  end

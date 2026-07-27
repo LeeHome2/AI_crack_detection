@@ -1,0 +1,17 @@
+flowchart TB
+  U([사용자 · 모바일 웹]) -->|HTTPS| CF[Cloudflare Tunnel]
+  CF --> C1
+  subgraph SRV[GCE VM · Docker Compose]
+    direction LR
+    C1[8501 · 복합+seg 하이브리드<br/>CD 자동배포]
+    C2[8502 · 균열 안전판<br/>동결·수동]
+    V[(crack_chroma 볼륨<br/>RAG 인덱스)]
+  end
+  C1 --- V
+  DT[데스크탑 RTX 3070Ti<br/>모델 학습] -->|git push · LFS| GH[(GitHub main<br/>코드 · 모델*.pt)]
+  GH -->|Actions CD<br/>SSH → git-lfs pull → 빌드 → 스모크| C1
+  API[Upstage Solar · Anthropic Claude<br/>임베딩·비전·보고서 LLM] -.->|API 호출| C1
+  classDef box fill:#1C7293,stroke:#21295C,color:#fff;
+  classDef io fill:#21295C,stroke:#21295C,color:#fff;
+  classDef safe fill:#065A82,stroke:#21295C,color:#fff;
+  class C1 box; class C2 safe; class GH io; class DT io; class U io; class CF box; class API io; class V io;
