@@ -3,9 +3,11 @@
 - 핸드오프 컨벤션: 경로는 상수로 상단 분리
 """
 import os
+from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 def _env(name, default=""):
     """환경변수를 읽되 인라인 주석(' #...')·양끝 공백을 제거해 방어.
@@ -43,6 +45,28 @@ _YOLO_CANDIDATES = [
 ]
 YOLO_WEIGHTS = next((p for p in _YOLO_CANDIDATES if _real_weights(p)), _YOLO_CRACK)
 
+# ---- [하이브리드] 균열=crack 전용 모델 / 기타 5종=defect6 모델 ----
+# defect6 모델이 세로균열을 efflorescence로 오분류하는 문제 해결.
+# crack 모델로 균열만 검출하고, defect6에서 crack 제외한 5종만 사용.
+HYBRID_DETECT_ENABLED = _env("HYBRID_DETECT_ENABLED", "1") not in ("0", "false", "no", "off", "")
+
+# Crack 전용 모델 (하이브리드용)
+_CRACK_MODEL_CANDIDATES = [
+    _env("CRACK_MODEL_WEIGHTS", ""),
+    os.path.join(BASE_DIR, "runs", "detect", "runs", "crack", "train_tiled_v1", "weights", "best.pt"),
+    os.path.join(BASE_DIR, "runs", "detect", "runs", "crack", "train_v1", "weights", "best.pt"),
+    _YOLO_CRACK,
+]
+CRACK_MODEL_WEIGHTS = next((p for p in _CRACK_MODEL_CANDIDATES if _real_weights(p)), "")
+
+# Defect6 모델 (하이브리드에서 crack 제외 5종 담당)
+_DEFECT6_MODEL_CANDIDATES = [
+    _env("DEFECT6_MODEL_WEIGHTS", ""),
+    os.path.join(BASE_DIR, "models", "yolov8s_defect6_tiled_best.pt"),
+    os.path.join(BASE_DIR, "models", "yolov8s_defect6_final.pt"),
+]
+DEFECT6_MODEL_WEIGHTS = next((p for p in _DEFECT6_MODEL_CANDIDATES if _real_weights(p)), "")
+
 # ---- [고도화] 균열 세그멘테이션 하이브리드 (균열=seg / 면적결함=bbox) ----
 # 기본 OFF. seg best.pt 성능·비주얼 검증 후 SEG_HYBRID_ENABLED=1 로 활성(env).
 #   활성 시: 균열은 seg 마스크에서, 면적결함(철근노출·박리 등)은 기존 bbox에서 → orchestrator가 합침.
@@ -63,24 +87,24 @@ except ValueError:
 #   오탐하는 것을 제거. 판별자: 채움비(fill=area/bbox)·평균두께(area/장축). 대각선도 안전.
 #   (bbox 장/단축비 elong은 대각 균열에서 낮게 나와 부적합 → 사용 안 함)
 try:
-    SEG_MAX_FILL = float(_env("SEG_MAX_FILL", "0.5") or "0.5")       # bbox 채움비 최대(성기게 채움)
+    SEG_MAX_FILL = float(_env("SEG_MAX_FILL", "0.7") or "0.7")       # bbox 채움비 최대(성기게 채움)
 except ValueError:
-    SEG_MAX_FILL = 0.5
+    SEG_MAX_FILL = 0.7
 try:
-    SEG_MAX_WIDTH_FRAC = float(_env("SEG_MAX_WIDTH_FRAC", "0.02") or "0.02")  # 평균두께 상한(짧은변 대비)
+    SEG_MAX_WIDTH_FRAC = float(_env("SEG_MAX_WIDTH_FRAC", "0.10") or "0.10")  # 평균두께 상한(짧은변 대비)
 except ValueError:
-    SEG_MAX_WIDTH_FRAC = 0.02
+    SEG_MAX_WIDTH_FRAC = 0.10
 
 # ---- 타일 슬라이스 추론 ----
 TILE = 640
 OVERLAP = 0.2
-CONF = 0.15          # 자신감 낮은 모델 기준. 오탐 많으면 0.25로
+CONF = 0.05          # 낮은 신뢰도 균열도 검출하도록 낮춤 (기존 0.15)
 IOU_MERGE = 0.5      # 타일 경계 중복 박스 병합(NMS)
 
 # ---- 탐지 후처리 (재학습 없이 이음새 오탐·개수 보정) ----
 # 이음새 필터: 균열 중심선이 '매우 곧은 직선'이면 이음새로 보고 제외 (구불한 균열은 보존).
 #  직선성 = 주축대비 수직편차/길이. 이 값 미만이면 이음새로 간주. 실사진으로 튜닝 필요.
-SEAM_FILTER_ENABLED = _env("SEAM_FILTER_ENABLED", "1") not in ("0", "false", "no", "off")
+SEAM_FILTER_ENABLED = _env("SEAM_FILTER_ENABLED", "0") not in ("0", "false", "no", "off")  # 균열 오제거 방지를 위해 기본 OFF
 try:
     SEAM_STRAIGHTNESS_MAX = float(_env("SEAM_STRAIGHTNESS_MAX", "0.030") or "0.030")
 except ValueError:

@@ -19,7 +19,7 @@ def image_hash(data: bytes) -> str:
     return hashlib.md5(data).hexdigest()
 
 
-def analyze(img_bgr, image_hash_str: str = "", progress=None) -> AgentState:
+def analyze(img_bgr, image_hash_str: str = "", progress=None, skip_report=False) -> AgentState:
     """이미지 1장 → 전체 파이프라인 → 채워진 AgentState.
     triage(1차 게이트) → detect·features·rule·rag·report.
     각 단계는 모델/API 없어도 안전하게 동작(트리아지 실패 시 통과 폴백).
@@ -36,8 +36,13 @@ def analyze(img_bgr, image_hash_str: str = "", progress=None) -> AgentState:
             else Stage.REJECTED
         return state
 
-    _p("② 결함 탐지 (YOLO 타일 추론)")
-    det = detector.detect(img_bgr)
+    # [하이브리드] crack 모델 + defect6 모델 조합 (기본 ON)
+    if detector.is_hybrid_ready():
+        _p("② 결함 탐지 (하이브리드: crack + defect6)")
+        det = detector.detect_hybrid(img_bgr)
+    else:
+        _p("② 결함 탐지 (YOLO 타일 추론)")
+        det = detector.detect(img_bgr)
     # 후처리: 이음새(타일 줄눈 등) 오탐 박스 제거 → 이후 특징·위험도·근거·보고서에 반영
     det = postprocess.filter_seams(img_bgr, det)
 
@@ -80,10 +85,14 @@ def analyze(img_bgr, image_hash_str: str = "", progress=None) -> AgentState:
     state.rag = rag.search(state.features, risk_pre)     # 근거 검색
     state.risk = rules.evaluate(state.features, state.rag)   # RAG 반영 최종 위험도
 
-    _p("⑤ 점검 보고서 생성 (LLM)")
-    # 트리아지가 읽어낸 메타(구조부위·재질·양상)를 보고서 기본현황·점검결과에 반영
-    state.report = report.generate(state.features, state.risk, state.rag,
-                                   meta=state.triage.meta)
+    if not skip_report:
+        _p("⑤ 점검 보고서 생성 (LLM)")
+        # 트리아지가 읽어낸 메타(구조부위·재질·양상)를 보고서 기본현황·점검결과에 반영
+        state.report = report.generate(state.features, state.risk, state.rag,
+                                       meta=state.triage.meta)
+    else:
+        _p("⑤ 보고서 생성 생략 (빠른 테스트)")
+        state.report = None
 
     state.stage = Stage.ANALYZED
     return state

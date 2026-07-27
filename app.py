@@ -117,6 +117,10 @@ with st.sidebar:
     m = config.MODEL_METRICS
     st.metric("mAP50", m["mAP50"])
     st.metric("Recall", m["recall"])
+    st.divider()
+    st.subheader("테스트 옵션")
+    skip_report = st.toggle("⚡ 빠른 테스트 (보고서 생략)", value=False,
+                            help="LLM 보고서 생성을 건너뛰어 검출만 빠르게 확인")
 
 # ---- 1) 입력: 업로드(기본) 또는 촬영 (모바일 대응) ----
 # 기본은 '사진 선택'. 촬영은 버튼을 눌러야 카메라가 켜짐(진입 즉시 카메라 안 열림).
@@ -152,18 +156,19 @@ if img is None:
 
 # ---- 세션 캐시: 같은 사진이면 재분석 안 함 (Streamlit 재실행 대비) ----
 h = orchestrator.image_hash(data)
-if st.session_state.get("hash") != h:
+cache_key = f"{h}_{skip_report}"
+if st.session_state.get("cache_key") != cache_key:
     with st.status("분석 준비 중…", expanded=True) as _status:
         def _prog(label):
             _status.update(label=label + " …")
             st.write("✔ " + label)
-        state = orchestrator.analyze(img, h, progress=_prog)
+        state = orchestrator.analyze(img, h, progress=_prog, skip_report=skip_report)
         # 트리아지 게이트로 조기 반환되면 detect 없음 → 어노테이트 생략
         vis_rgb = annotate(img, state.detect, getattr(state, "crack_mask", None)) \
             if state.detect is not None else None
         _done = "재촬영 안내" if state.detect is None else "분석 완료"
         _status.update(label=_done, state="complete", expanded=False)
-    st.session_state.update({"hash": h, "state": state, "vis": vis_rgb})
+    st.session_state.update({"hash": h, "cache_key": cache_key, "state": state, "vis": vis_rgb})
 
 state = st.session_state["state"]
 vis_rgb = st.session_state["vis"]
@@ -248,16 +253,19 @@ with st.expander("📚 안전기준 근거 (RAG)", expanded=bool(rag_res.evidenc
 
 # ---- 3) 점검 보고서 초안 (현업 6섹션 서식) ----
 st.subheader("3) 점검 보고서 초안")
-_prov = report.provider_label()
-st.caption(f"※ 보고서 LLM: {_prov}" + ("  (LLM 키 없음 → 템플릿 목업)" if _prov == "목업" else ""))
-report_md = rep.to_markdown()
-for _title, _attr in rep.SECTIONS:
-    st.markdown(f"#### {_title}")
-    st.markdown(_no_strike(getattr(rep, _attr)))
-st.download_button(
-    "📄 보고서 초안 내려받기 (.md)",
-    data=report_md,
-    file_name="균열_안전점검_결과보고서_초안.md",
-    mime="text/markdown",
-    use_container_width=True,
-)
+if rep is None:
+    st.info("⚡ 빠른 테스트 모드: 보고서 생성이 생략되었습니다. 사이드바에서 토글을 끄면 보고서가 생성됩니다.")
+else:
+    _prov = report.provider_label()
+    st.caption(f"※ 보고서 LLM: {_prov}" + ("  (LLM 키 없음 → 템플릿 목업)" if _prov == "목업" else ""))
+    report_md = rep.to_markdown()
+    for _title, _attr in rep.SECTIONS:
+        st.markdown(f"#### {_title}")
+        st.markdown(_no_strike(getattr(rep, _attr)))
+    st.download_button(
+        "📄 보고서 초안 내려받기 (.md)",
+        data=report_md,
+        file_name="균열_안전점검_결과보고서_초안.md",
+        mime="text/markdown",
+        use_container_width=True,
+    )
