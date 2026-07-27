@@ -12,7 +12,7 @@ orchestrator 가 둘을 합친다(균열=seg / 면적=bbox).
   (마스크 직접 특징은 mask_features()로 별도 제공 — 검증 후 features 경로에 연결 예정.)
 
 검증 후 활성 순서:
-  1) 데스크탑 seg 학습 best.pt → models/yolov8s_seg_crack_best.pt 로 커밋(git-lfs)
+  1) 데스크탑 seg 학습 best.pt → models/yolov8s_seg_crack_tiled_best.pt 로 커밋(git-lfs) ✅완료(72.2% mask)
   2) SEG_HYBRID_ENABLED=1 env 로 켜고 실사진으로 마스크 품질 확인
   3) 좋으면 features 를 mask_features() 기반으로 승격(균열 길이·폭을 마스크에서 직접)
 """
