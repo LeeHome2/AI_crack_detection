@@ -55,6 +55,11 @@ jobs:
           set -uo pipefail
           export PATH="/usr/local/bin:/usr/bin:/bin:/snap/bin:$HOME/.local/bin:$PATH"
           cd "$HOME/${DEPLOY_DIR}" || { echo "[deploy] 배포 디렉토리 없음"; exit 1; }
+          # github.com 호스트키 보장 (SSH 리모트 첫 연결 'Host key verification failed' 방지)
+          mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+          if ! ssh-keygen -F github.com >/dev/null 2>&1; then
+            ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
+          fi
           echo "[deploy] fetch + reset --hard origin/main"
           git fetch origin --quiet || { echo "[deploy] git fetch 실패"; exit 1; }
           git checkout main --quiet 2>/dev/null || git checkout -B main origin/main
