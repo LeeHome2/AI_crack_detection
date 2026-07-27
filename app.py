@@ -12,7 +12,7 @@ import cv2
 import streamlit as st
 
 import config
-from pipeline import orchestrator, features, detector, rag, report, triage
+from pipeline import orchestrator, features, detector, rag, report, triage, pdf_export
 from schemas import Stage
 
 GRADE_COLOR = {"정상": "#16a34a", "주의": "#d97706", "위험": "#dc2626", "긴급": "#7f1d1d"}
@@ -148,6 +148,28 @@ if up is None:
     st.info("사진을 촬영하거나 업로드하면 분석이 시작됩니다.")
     st.stop()
 
+# ---- 1.5) 시설물 정보 입력 (보고서용) ----
+st.subheader("1-1) 시설물 정보 (선택)")
+with st.expander("📝 보고서에 들어갈 정보 입력", expanded=False):
+    col1, col2 = st.columns(2)
+    with col1:
+        facility_name = st.text_input("시설물명", placeholder="예: ○○아파트 101동")
+        location = st.text_input("위치", placeholder="예: 서울시 강남구 ○○로 123")
+    with col2:
+        inspector = st.text_input("점검자", placeholder="예: 홍길동")
+        part_detail = st.text_input("점검 부위 상세", placeholder="예: 지하주차장 B2층 기둥")
+    remarks = st.text_area("비고", placeholder="특이사항이나 추가 메모", height=68)
+
+# 사용자 입력을 세션에 저장
+user_info = {
+    "facility_name": facility_name.strip() if facility_name else "",
+    "location": location.strip() if location else "",
+    "inspector": inspector.strip() if inspector else "",
+    "part_detail": part_detail.strip() if part_detail else "",
+    "remarks": remarks.strip() if remarks else "",
+}
+st.session_state["user_info"] = user_info
+
 data = up.getvalue()   # 촬영·업로드 공통 (read()와 달리 재호출 안전)
 img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)   # BGR
 if img is None:
@@ -162,13 +184,15 @@ if st.session_state.get("cache_key") != cache_key:
         def _prog(label):
             _status.update(label=label + " …")
             st.write("✔ " + label)
-        state = orchestrator.analyze(img, h, progress=_prog, skip_report=skip_report)
+        state = orchestrator.analyze(img, h, progress=_prog, skip_report=skip_report,
+                                     user_info=user_info)
         # 트리아지 게이트로 조기 반환되면 detect 없음 → 어노테이트 생략
         vis_rgb = annotate(img, state.detect, getattr(state, "crack_mask", None)) \
             if state.detect is not None else None
         _done = "재촬영 안내" if state.detect is None else "분석 완료"
         _status.update(label=_done, state="complete", expanded=False)
-    st.session_state.update({"hash": h, "cache_key": cache_key, "state": state, "vis": vis_rgb})
+    st.session_state.update({"hash": h, "cache_key": cache_key, "state": state,
+                             "vis": vis_rgb, "img_bgr": img})
 
 state = st.session_state["state"]
 vis_rgb = st.session_state["vis"]
@@ -262,10 +286,34 @@ else:
     for _title, _attr in rep.SECTIONS:
         st.markdown(f"#### {_title}")
         st.markdown(_no_strike(getattr(rep, _attr)))
-    st.download_button(
-        "📄 보고서 초안 내려받기 (.md)",
-        data=report_md,
-        file_name="균열_안전점검_결과보고서_초안.md",
-        mime="text/markdown",
-        use_container_width=True,
-    )
+    # 다운로드 버튼들
+    col_dl1, col_dl2 = st.columns(2)
+    with col_dl1:
+        st.download_button(
+            "📄 마크다운 (.md)",
+            data=report_md,
+            file_name="균열_안전점검_결과보고서_초안.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
+    with col_dl2:
+        if pdf_export.is_available():
+            try:
+                pdf_bytes = pdf_export.generate_pdf(
+                    report=rep,
+                    risk=risk,
+                    img_original_bgr=st.session_state.get("img_bgr", img),
+                    img_annotated_rgb=vis_rgb,
+                    user_info=st.session_state.get("user_info"),
+                )
+                st.download_button(
+                    "📑 PDF 내려받기",
+                    data=pdf_bytes,
+                    file_name="균열_안전점검_결과보고서.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
+            except Exception as e:
+                st.warning(f"PDF 생성 실패: {e}")
+        else:
+            st.info("PDF 내보내기: `pip install fpdf2` 필요")

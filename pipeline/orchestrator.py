@@ -19,7 +19,8 @@ def image_hash(data: bytes) -> str:
     return hashlib.md5(data).hexdigest()
 
 
-def analyze(img_bgr, image_hash_str: str = "", progress=None, skip_report=False) -> AgentState:
+def analyze(img_bgr, image_hash_str: str = "", progress=None, skip_report=False,
+            user_info=None) -> AgentState:
     """이미지 1장 → 전체 파이프라인 → 채워진 AgentState.
     triage(1차 게이트) → detect·features·rule·rag·report.
     각 단계는 모델/API 없어도 안전하게 동작(트리아지 실패 시 통과 폴백).
@@ -94,7 +95,7 @@ def analyze(img_bgr, image_hash_str: str = "", progress=None, skip_report=False)
         _p("⑤ 점검 보고서 생성 (LLM)")
         # 트리아지가 읽어낸 메타(구조부위·재질·양상)를 보고서 기본현황·점검결과에 반영
         state.report = report.generate(state.features, state.risk, state.rag,
-                                       meta=state.triage.meta)
+                                       meta=state.triage.meta, user_info=user_info)
     else:
         _p("⑤ 보고서 생성 생략 (빠른 테스트)")
         state.report = None

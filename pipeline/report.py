@@ -34,21 +34,38 @@ def _meta_val(meta, key, default="미상"):
     return v if v and v != "미상" else default
 
 
-def _basic_info(meta=None) -> str:
-    """1. 시설물 기본현황 — 사용자 입력 자리표시자 + (트리아지 비전 메타) + 점검 메타."""
+def _basic_info(meta=None, user_info=None) -> str:
+    """1. 시설물 기본현황 — 사용자 입력 + (트리아지 비전 메타) + 점검 메타."""
     today = datetime.date.today().isoformat()
     part = _meta_val(meta, "structure_part")     # 벽/바닥/기둥/천장/외벽…
     material = _meta_val(meta, "material")        # 콘크리트/벽돌/타일…
     struct = "철근콘크리트" if material in ("콘크리트", "미상") else material
+
+    # 사용자 입력 우선, 없으면 플레이스홀더
+    ui = user_info or {}
+    facility = ui.get("facility_name") or "(미입력)"
+    location = ui.get("location") or "(미입력)"
+    inspector = ui.get("inspector") or "(미입력)"
+    part_detail = ui.get("part_detail") or ""
+
+    # 점검 부위: 사용자 상세입력 > AI 추정 > 미상
+    if part_detail:
+        part_str = part_detail
+    elif part and part != "미상":
+        part_str = f"{part} (AI 추정)"
+    else:
+        part_str = "(미입력)"
+
     return (
         "| 항목 | 내용 |\n"
         "|---|---|\n"
-        "| 시설물명 | (사용자 입력) 예: ○○빌딩 외벽 |\n"
-        "| 위치 | (사용자 입력) 예: 서울시 ○○구 |\n"
-        f"| 점검 부위 | {part} (AI 비전 추정) |\n"
+        f"| 시설물명 | {facility} |\n"
+        f"| 위치 | {location} |\n"
+        f"| 점검 부위 | {part_str} |\n"
         f"| 구조형식 | {struct} |\n"
         f"| 점검일자 | {today} |\n"
-        "| 점검방식 | 사진 기반 AI 자가진단 (비전 트리아지 + YOLO 타일 탐지 + OpenCV 형태분석) |"
+        f"| 점검자 | {inspector} |\n"
+        "| 점검방식 | 사진 기반 AI 자가진단 (비전 트리아지 + YOLO 탐지 + OpenCV 형태분석) |"
     )
 
 
@@ -156,63 +173,95 @@ def _defect_prompt_block(feat: CrackFeatures) -> str:
 def _mock_inspection_result(feat: CrackFeatures, meta=None) -> str:
     length_pct = round(feat.max_length_ratio * 100, 1)
     defect_rows = _defect_rows(feat)
+
+    # 신뢰도 해석
+    conf = feat.max_confidence
+    if conf >= 0.8:
+        conf_desc = f"{conf} (높음)"
+    elif conf >= 0.5:
+        conf_desc = f"{conf} (보통)"
+    else:
+        conf_desc = f"{conf} (낮음)"
+
     crack_block = (
-        "업로드된 사진에서 다음과 같은 결함이 탐지되었습니다.\n\n"
-        "| 항목 | 결과 |\n"
-        "|---|---|\n"
-        f"| 탐지된 균열 개수 | {feat.crack_count}개소 |\n"
-        f"| 최고 탐지 신뢰도 | {feat.max_confidence} |\n"
-        f"| 최장 균열 길이 (상대) | 이미지 대각선의 약 {length_pct}% |\n"
-        f"| 평균 균열 폭 (상대) | 픽셀 기준 {feat.avg_width_px}px |\n"
+        "업로드된 사진을 AI 모델로 분석한 결과, 다음과 같은 결함이 탐지되었습니다.\n\n"
+        "**균열 탐지 결과**\n\n"
+        "| 항목 | 측정값 | 비고 |\n"
+        "|---|---|---|\n"
+        f"| 탐지된 균열 | **{feat.crack_count}개소** | YOLO 객체탐지 |\n"
+        f"| 탐지 신뢰도 | {conf_desc} | 최고값 기준 |\n"
+        f"| 균열 길이 | 대각선 대비 약 **{length_pct}%** | 최장 기준 |\n"
+        f"| 균열 폭 | **{feat.avg_width_px}px** | 픽셀 평균 |\n"
     )
     composite = ""
     if defect_rows:
         composite = (
-            "\n**균열 외 복합 결함**\n\n"
-            "| 결함 유형 | 결과 |\n"
+            "\n**복합 결함 (균열 외)**\n\n"
+            "| 결함 유형 | 탐지 결과 |\n"
             "|---|---|\n"
             f"{defect_rows}\n"
         )
     tail = (
-        "\n※ 사진만으로는 실제 mm 단위 폭을 확정할 수 없어 상대값으로 표기합니다. "
-        "탐지 이미지(박스 표시)는 첨부 참조."
+        "\n> 📌 **참고:** 사진만으로는 실제 mm 단위 폭을 확정할 수 없어 "
+        "상대값(픽셀/비율)으로 표기합니다. 정확한 폭 측정은 현장 정밀점검이 필요합니다."
     )
     return crack_block + composite + tail + _meta_observation(meta) + _vision_crosscheck(meta, feat)
 
 
 def _mock_safety_grade(risk: RiskResult) -> str:
     state = config.STATE_GRADE_MAP.get(risk.grade, "-")
+    # 등급별 아이콘과 색상 설명
+    grade_icon = {"정상": "🟢", "주의": "🟡", "위험": "🟠", "긴급": "🔴"}.get(risk.grade, "⚪")
+    grade_action = {
+        "정상": "현재 뚜렷한 결함이 없거나 경미한 수준입니다.",
+        "주의": "결함이 확인되어 정기적 관찰이 필요합니다.",
+        "위험": "결함이 상당하여 전문가 점검이 필요합니다.",
+        "긴급": "심각한 결함으로 즉시 조치가 필요합니다.",
+    }.get(risk.grade, "")
+
     return (
+        f"{grade_icon} **자가진단 등급: {risk.grade}**\n\n"
         "| 구분 | 결과 |\n"
         "|---|---|\n"
-        f"| 위험도 점수 (Rule) | {risk.score} / 100 |\n"
+        f"| 위험도 점수 | **{risk.score}점** / 100점 |\n"
         f"| 자가진단 등급 | **{risk.grade}** |\n"
         f"| 참고 상태평가등급 | {state} 수준 |\n\n"
-        f"산정 근거(Rule 기여): {_contrib_line(risk)}"
+        f"> {grade_action}\n\n"
+        f"**산정 근거 (규칙 기반 평가)**\n\n{_contrib_line(risk)}"
     )
 
 
 def _mock_overall_opinion(feat: CrackFeatures, risk: RiskResult) -> str:
     defects = getattr(feat, "defects", None) or {}
-    if risk.grade in ("위험", "긴급"):
-        head = "탐지된 결함의 종류·규모로 볼 때 **즉시 전문가 정밀 점검**이 필요합니다."
+
+    # 등급별 종합 의견 헤더
+    if risk.grade == "긴급":
+        head = "🔴 **즉시 조치 필요** — 탐지된 결함이 심각한 수준으로, 즉시 전문가 정밀진단 및 긴급 보수가 필요합니다."
+    elif risk.grade == "위험":
+        head = "🟠 **전문가 점검 권고** — 결함의 종류와 규모로 볼 때 빠른 시일 내 전문가 정밀점검을 받으시기 바랍니다."
     elif risk.grade == "주의":
-        head = "결함이 확인되어 **유지관찰 및 추가 점검**이 필요합니다."
+        head = "🟡 **정기 관찰 필요** — 결함이 확인되었으나 당장 위험한 수준은 아닙니다. 정기적으로 상태를 확인하세요."
     else:
-        head = "현재 뚜렷한 위험 신호는 낮으나 **주기적 관찰**을 권장합니다."
-    lines = [f"- {head}"]
+        head = "🟢 **양호** — 현재 뚜렷한 위험 신호는 없습니다. 주기적으로 상태를 관찰하시기 바랍니다."
+
+    lines = [head, ""]
+
+    # 조치 권고사항
+    lines.append("**권고 조치사항**")
+
     # 복합 결함별 조치 방향(고위험 결함 우선 고지)
     if "rebar_exposure" in defects:
-        lines.append("- **철근노출**이 확인되어 부식·단면손실 우려가 있으므로 "
-                     "방청·단면복구 등 적극적 보수와 정밀진단이 필요합니다.")
+        lines.append("- ⚠️ **철근노출** 확인 → 부식·단면손실 우려. 방청처리 및 단면복구 필요")
     if "spalling" in defects:
-        lines.append("- **박리·박락**은 철근노출로 진행될 수 있어 들뜬 부위 제거 후 단면복구를 권고합니다.")
+        lines.append("- ⚠️ **박리/박락** 확인 → 들뜬 부위 제거 후 단면복구 권고")
     if "efflorescence" in defects:
-        lines.append("- **백태(누수 흔적)**는 수분 침투 신호이므로 누수 원인 규명·방수 보수를 검토하세요.")
-    lines.append("- 균열폭이 0.3mm를 초과하거나 시간이 지나며 진행(확장)될 경우 "
-                 "적극적 보수(충전·주입)가 필요합니다.")
-    lines.append("- 구조적 원인(하중·부등침하) 가능성을 배제할 수 없으므로, "
-                 "**전문가의 정밀 점검**을 권고합니다.")
+        lines.append("- 💧 **백태(누수흔적)** 확인 → 누수 원인 규명 및 방수 보수 검토")
+
+    if feat.crack_count > 0:
+        lines.append("- 균열폭 0.3mm 초과 또는 시간에 따른 진행(확장) 시 적극적 보수(충전/주입) 필요")
+
+    lines.append("- 구조적 원인(하중, 부등침하 등) 가능성 배제 불가 → **전문가 정밀점검 권고**")
+
     return "\n".join(lines)
 
 
@@ -258,50 +307,74 @@ def _prompt(feat, risk, rag, meta=None) -> str:
         f"- {c['rule']}: {c['detail']} (+{c['points']})" for c in risk.contributions
     ) or "- (해당 없음)"
     state = config.STATE_GRADE_MAP.get(risk.grade, "-")
-    return f"""당신은 시설물 안전점검 보조 AI입니다. 비전문가(건물주·일반인)가 이해할 수 있게 쉽게,
-그러나 정기안전점검 결과보고서(FMS·국토안전관리원) 서식의 어조로 서술하세요.
-점수와 등급은 아래 값을 그대로 사용하고 재계산하지 마세요. 과장·단정을 피하고, 정밀점검을 권고하세요.
+    length_pct = round(feat.max_length_ratio * 100, 1)
 
-[분석 결과]
-- 균열 개수: {feat.crack_count}
-- 최고 탐지 신뢰도: {feat.max_confidence}
-- 최장 균열 길이 비율(대각선 대비): {feat.max_length_ratio}
-- 평균 균열 폭(px): {feat.avg_width_px}
+    # 등급별 어조 가이드
+    tone_guide = {
+        "정상": "안심시키되 지속 관찰 권유",
+        "주의": "경각심을 주되 과장하지 않음",
+        "위험": "심각성을 전달하되 당장 무너진다는 식 과장 금지",
+        "긴급": "즉각 조치 필요성을 명확히 전달",
+    }.get(risk.grade, "")
 
-[균열 외 복합 결함(코드 탐지 — 보이는 사실만, 새로 지어내지 말 것)]
+    return f"""당신은 시설물 안전점검 전문 AI입니다.
+
+**목표:** 비전문가(건물주, 일반인)도 쉽게 이해할 수 있으면서, 정기안전점검 보고서 수준의 전문성을 갖춘 문서 작성
+
+**어조:** {tone_guide}
+
+---
+## 입력 데이터 (변경/재계산 금지, 그대로 인용)
+
+**균열 탐지 결과**
+| 항목 | 값 |
+|---|---|
+| 균열 개수 | {feat.crack_count}개소 |
+| 최고 신뢰도 | {feat.max_confidence} |
+| 균열 길이 | 대각선 대비 {length_pct}% |
+| 균열 폭 | {feat.avg_width_px}px (상대값) |
+
+**복합 결함 (YOLO 탐지)**
 {_defect_prompt_block(feat)}
 
-[AI 비전 육안 관찰(트리아지) — 보이는 사실만, 새로 지어내지 말 것]
+**AI 비전 육안 관찰 (트리아지)**
 {_meta_prompt_block(meta)}
 
-[위험도(코드 산정, 재계산 금지)]
-- 점수: {risk.score} / 등급: {risk.grade} / 참고 상태평가등급: {state}
-- 근거:
+**위험도 평가 (코드 산정 — 재계산 금지)**
+- 점수: **{risk.score}점** / 등급: **{risk.grade}** / 참고 상태평가등급: {state}
+- 산정 근거:
 {contribs}
 
-[안전기준 근거(RAG) — 이 사실만 인용, 새로운 기준을 지어내지 말 것]
+**안전기준 근거 (RAG 검색 — 새로 지어내지 말 것)**
 {ev}
 
-아래 3개 섹션만, 정확히 이 마크다운 제목을 그대로 사용해 한국어로 작성하세요.
-표가 자연스러운 곳(점검 결과·안전등급)은 마크다운 표를 쓰세요.
+---
+## 작성 규칙 (필수)
 
-[작성 규칙 — 반드시 지킬 것]
-- '모델이 탐지한 결함'과 '비전으로만 관찰된 결함(위 AI 비전 육안 관찰)'을 명확히 구분하세요.
-  비전으로만 관찰된 결함은 이름 뒤에 반드시 "(비전 관찰)"을 붙이고, 개수·신뢰도 같은
-  측정값처럼 표에 넣지 마세요. 표의 다른 측정 행과 모순되지 않게 하세요
-  (예: 표에 '동반 결함'을 적었다면 소견에서 '탐지되지 않았다'고 쓰지 말 것 — 대신 '비전 관찰'로 일관되게).
-- 균열폭을 mm로 단정하지 마세요. 이 사진의 폭은 위 '평균 균열 폭(px)' 상대값으로만 서술하고,
-  mm 기준(0.3mm 등)은 어디까지나 '기준 참고값'으로만 인용하세요("이 균열은 0.5~1.0mm"처럼 쓰지 말 것).
+1. **데이터 정확성**: 위 수치를 그대로 사용. 점수/등급 재계산 금지.
+2. **균열폭 표현**: mm 단위로 단정 금지. "{feat.avg_width_px}px"는 상대값임을 명시. "0.3mm 기준"은 참고로만 인용.
+3. **결함 구분**: YOLO 탐지 결함과 비전 관찰 결함 명확히 구분. 비전 관찰은 "(육안)"으로 표시.
+4. **과장 금지**: "붕괴 위험", "매우 심각" 등 과도한 표현 자제. 사실 기반으로 서술.
+5. **전문가 권고**: 반드시 "정밀점검 권고" 문구 포함.
+
+---
+## 출력 형식 (마크다운, 정확히 이 제목 사용)
 
 ## 2. 점검 결과
-(모델이 탐지한 균열의 개수·신뢰도·길이·폭을 표로 정리. 모델이 탐지한 균열 외 결함이 있으면 함께 정리하고,
- 비전으로만 관찰된 결함은 "(비전 관찰)"로 구분해 표기)
+- 탐지된 결함을 마크다운 표로 정리
+- 항목: 균열 개수, 신뢰도, 길이(비율), 폭(px)
+- 복합 결함 있으면 별도 표로 추가
+- 비전 관찰 결함은 "(육안)" 표시로 구분
 
 ## 3. 안전등급 평가
-(위험도 점수/자가진단 등급/참고 상태평가등급과 산정 근거)
+- 위험도 점수, 자가진단 등급, 참고 등급을 표로 정리
+- 등급 산정 근거 간략 설명
+- 등급별 의미 한 줄 설명 (🟢정상/🟡주의/🟠위험/🔴긴급)
 
 ## 4. 종합의견
-(즉시 조치/추가 점검/유지관찰 방향을 짧고 명확하게 — 3줄 이내)"""
+- 3줄 이내로 핵심만 (즉시조치/추가점검/유지관찰 중 해당 방향)
+- 구체적 권고 조치 1~2개
+- 마지막에 "전문가 정밀점검 권고" 포함"""
 
 
 def _parse_narrative(text: str) -> dict:
@@ -389,10 +462,12 @@ def provider_label() -> str:
 
 
 # ────────────────────────────── 진입점 ──────────────────────────────
-def generate(feat: CrackFeatures, risk: RiskResult, rag: RagResult, meta=None) -> Report:
+def generate(feat: CrackFeatures, risk: RiskResult, rag: RagResult,
+             meta=None, user_info=None) -> Report:
     """6섹션 보고서 Report 생성. 결정적 섹션은 코드, 서술 섹션은 LLM/목업.
     제공자 체인(claude→solar→mock). LLM 호출 실패해도 목업으로 폴백해 앱이 죽지 않음.
     meta: 트리아지 비전이 읽어낸 메타(구조부위·재질·양상) — 기본현황·점검결과 보강용(없어도 됨).
+    user_info: 사용자가 입력한 시설물 정보 (시설물명, 위치, 점검자 등).
     """
     provider = active_provider()
     narr = None
@@ -405,8 +480,14 @@ def generate(feat: CrackFeatures, risk: RiskResult, rag: RagResult, meta=None) -
         narr = None                     # LLM 오류 → 목업 폴백
     if narr is None:
         narr = _mock_narrative(feat, risk, rag, meta)
+
+    # 사용자 비고가 있으면 종합의견 끝에 추가
+    remarks = (user_info or {}).get("remarks", "")
+    if remarks:
+        narr["overall_opinion"] += f"\n\n**점검자 메모:** {remarks}"
+
     return Report(
-        basic_info=_basic_info(meta),
+        basic_info=_basic_info(meta, user_info),
         inspection_result=narr["inspection_result"],
         safety_grade=narr["safety_grade"],
         overall_opinion=narr["overall_opinion"],
