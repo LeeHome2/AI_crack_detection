@@ -33,16 +33,31 @@ def _style(label):
     return DEFECT_STYLE.get(label, _DEFAULT_STYLE)
 
 
-def annotate(img_bgr, det):
-    """결함별 색상 박스 + 라벨 + 균열 중심선(스켈레톤) 오버레이 → RGB 반환."""
+def annotate(img_bgr, det, crack_mask=None):
+    """결함별 색상 박스 + 균열 오버레이 → RGB 반환.
+    - crack_mask(하이브리드 seg) 있으면: 정밀 마스크를 반투명 채움 + 외곽선으로 표시(균열 박스 생략).
+    - 없으면: 기존 OpenCV 스켈레톤 중심선(노란색).
+    """
     vis = img_bgr.copy()
-    # 스켈레톤(중심선): 균열에만(면적 결함 제외) — features.skeleton_mask가 crack만 처리. 노란색.
-    sk = features.skeleton_mask(img_bgr, det)
-    if sk.any():
-        sk = cv2.dilate(sk, np.ones((3, 3), np.uint8), iterations=1)
-        vis[sk > 0] = (0, 255, 255)   # BGR 노란색
-    # 결함별 색상 박스 + 라벨(코드+신뢰도)
+    has_mask = crack_mask is not None and getattr(crack_mask, "any", lambda: False)()
+    if has_mask:
+        # seg 정밀 균열 영역: 반투명 노란 채움 + 선명한 외곽선(데모 임팩트)
+        m = (crack_mask > 0)
+        tint = vis.copy(); tint[m] = (0, 255, 255)
+        vis = cv2.addWeighted(vis, 0.55, tint, 0.45, 0)
+        cnts, _ = cv2.findContours((m.astype(np.uint8)) * 255,
+                                   cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(vis, cnts, -1, (0, 200, 255), 2)
+    else:
+        # 스켈레톤(중심선): 균열에만 — features.skeleton_mask가 crack만 처리. 노란색.
+        sk = features.skeleton_mask(img_bgr, det)
+        if sk.any():
+            sk = cv2.dilate(sk, np.ones((3, 3), np.uint8), iterations=1)
+            vis[sk > 0] = (0, 255, 255)   # BGR 노란색
+    # 결함별 색상 박스 + 라벨(코드+신뢰도). 하이브리드면 균열은 마스크로 대체 → 박스 생략.
     for d in det.detections:
+        if has_mask and getattr(d, "label", "crack") == "crack":
+            continue
         x1, y1, x2, y2 = d.box
         stl = _style(getattr(d, "label", "crack"))
         col = stl["bgr"]
@@ -144,7 +159,8 @@ if st.session_state.get("hash") != h:
             st.write("✔ " + label)
         state = orchestrator.analyze(img, h, progress=_prog)
         # 트리아지 게이트로 조기 반환되면 detect 없음 → 어노테이트 생략
-        vis_rgb = annotate(img, state.detect) if state.detect is not None else None
+        vis_rgb = annotate(img, state.detect, getattr(state, "crack_mask", None)) \
+            if state.detect is not None else None
         _done = "재촬영 안내" if state.detect is None else "분석 완료"
         _status.update(label=_done, state="complete", expanded=False)
     st.session_state.update({"hash": h, "state": state, "vis": vis_rgb})
@@ -197,7 +213,10 @@ st.image(vis_rgb, use_container_width=True, caption="탐지 결과 (결함별 �
 _chips = defect_chips(state.detect)
 if _chips:
     st.markdown("**탐지된 결함:** " + _chips, unsafe_allow_html=True)
-st.caption("🟨 노란 선 = 균열 중심선(OpenCV 스켈레톤) · 색상 박스 = 결함별 YOLO 탐지 (위 범례 색상)")
+if getattr(state, "crack_mask", None) is not None:
+    st.caption("🟨 노란 영역 = 균열 세그멘테이션 마스크(픽셀 정밀) · 색상 박스 = 면적 결함 YOLO 탐지 (위 범례 색상)")
+else:
+    st.caption("🟨 노란 선 = 균열 중심선(OpenCV 스켈레톤) · 색상 박스 = 결함별 YOLO 탐지 (위 범례 색상)")
 if not detector.is_ready():
     st.warning("탐지 모델(best.pt)이 없어 박스가 표시되지 않습니다.")
 

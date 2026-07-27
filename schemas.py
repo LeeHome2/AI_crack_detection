@@ -135,3 +135,4 @@ class AgentState:
     risk: Optional[RiskResult] = None
     rag: Optional[RagResult] = None
     report: Optional[Report] = None
+    crack_mask: Optional[object] = None   # [하이브리드] seg 균열 마스크(HxW uint8) — 앱 정밀 오버레이용

@@ -43,22 +43,37 @@ def analyze(img_bgr, image_hash_str: str = "", progress=None) -> AgentState:
 
     # [고도화·기본 OFF] seg 하이브리드: 균열은 seg 마스크에서, 면적결함은 bbox에서.
     #   활성 + seg 준비됐을 때만. 예외 시 조용히 bbox 단독으로 폴백(데모 안전).
+    crack_mask = None
     if config.SEG_HYBRID_ENABLED and segmenter.is_ready():
         try:
             _p("② 균열 세그멘테이션 (하이브리드)")
-            seg_res, _mask = segmenter.segment(img_bgr)
+            seg_res, crack_mask = segmenter.segment(img_bgr)
             merged = DetectResult(image_size=det.image_size)
             merged.detections = [d for d in det.detections if d.label != "crack"]
             merged.detections += seg_res.detections   # 균열=seg 마스크 성분으로 대체
             det = merged
         except Exception as e:
             print(f"[orchestrator] seg 하이브리드 실패 → bbox 폴백: {e}")
+            crack_mask = None
     state.detect = det
+    state.crack_mask = crack_mask
 
     _p("③ 형태 특징 추출 (OpenCV)")
     state.features = features.extract(img_bgr, state.detect)
-    # 물리적 균열 개수 보정: 박스 수가 아니라 이어진 균열 덩어리 수 (한 줄이 여러 박스로 쪼개져도 1개)
-    state.features.crack_count = postprocess.physical_crack_count(img_bgr, state.detect)
+    if crack_mask is not None and crack_mask.any():
+        # [하이브리드] 균열 특징을 seg 마스크에서 직접 계산(박스 OpenCV보다 정밀).
+        cnt, length, width = segmenter.mask_features(crack_mask)
+        H, W = img_bgr.shape[:2]
+        diag = (W ** 2 + H ** 2) ** 0.5
+        state.features.crack_count = cnt
+        state.features.max_length_ratio = round(length / diag, 4) if diag else 0.0
+        state.features.avg_width_px = round(width, 2)
+        _cc = [d.conf for d in state.detect.detections if d.label == "crack"]
+        if _cc:
+            state.features.max_confidence = round(max(_cc), 3)
+    else:
+        # 물리적 균열 개수 보정(bbox 경로): 이어진 균열 덩어리 수 (한 줄이 여러 박스여도 1개)
+        state.features.crack_count = postprocess.physical_crack_count(img_bgr, state.detect)
 
     _p("④ 안전기준 근거 검색 (RAG)")
     risk_pre = rules.evaluate(state.features)            # RAG 전 1차 위험도
