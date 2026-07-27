@@ -59,6 +59,17 @@ try:
     SEG_CONF = float(_env("SEG_CONF", "0.25") or "0.25")
 except ValueError:
     SEG_CONF = 0.25
+# seg 마스크 형태 필터 — 균열은 '가늘다'. 도메인 밖 텍스처(화강암·거친면)를 큰 덩어리로
+#   오탐하는 것을 제거. 판별자: 채움비(fill=area/bbox)·평균두께(area/장축). 대각선도 안전.
+#   (bbox 장/단축비 elong은 대각 균열에서 낮게 나와 부적합 → 사용 안 함)
+try:
+    SEG_MAX_FILL = float(_env("SEG_MAX_FILL", "0.5") or "0.5")       # bbox 채움비 최대(성기게 채움)
+except ValueError:
+    SEG_MAX_FILL = 0.5
+try:
+    SEG_MAX_WIDTH_FRAC = float(_env("SEG_MAX_WIDTH_FRAC", "0.02") or "0.02")  # 평균두께 상한(짧은변 대비)
+except ValueError:
+    SEG_MAX_WIDTH_FRAC = 0.02
 
 # ---- 타일 슬라이스 추론 ----
 TILE = 640

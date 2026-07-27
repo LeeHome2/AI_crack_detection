@@ -105,23 +105,33 @@ def crack_mask(img_bgr):
 
 
 def segment(img_bgr):
-    """이미지 → (DetectResult[crack만], 균열 마스크).
-    마스크 연결요소별로 crack Detection(box=성분 bbox) 생성 → 기존 파이프라인과 호환.
+    """이미지 → (DetectResult[crack만], 필터된 균열 마스크).
+    마스크 연결요소 중 '가늘고 긴'(균열다운) 성분만 채택 → 도메인 밖 텍스처 덩어리 오탐 제거.
+    각 채택 성분을 crack Detection(box)으로 → 기존 파이프라인과 호환.
     비활성/모델없음이면 빈 DetectResult + 빈 마스크(폴백 안전)."""
     H, W = img_bgr.shape[:2]
     res = DetectResult(image_size=[W, H])
-    mask, mconf = crack_mask(img_bgr)
-    if not mask.any():
-        return res, mask
+    raw, mconf = crack_mask(img_bgr)
+    if not raw.any():
+        return res, raw
 
-    n, _lbl, stats, _c = cv2.connectedComponentsWithStats(
-        (mask > 0).astype(np.uint8), connectivity=8)
+    n, lbl, stats, _c = cv2.connectedComponentsWithStats(
+        (raw > 0).astype(np.uint8), connectivity=8)
     min_area = max(20, int(0.0003 * H * W))   # 미세 노이즈 성분 제거
+    max_width = max(12.0, config.SEG_MAX_WIDTH_FRAC * min(H, W))   # 평균두께 px 상한
+    mask = np.zeros_like(raw)                  # 형태 필터 통과분만 다시 채움
     for i in range(1, n):
-        if stats[i, cv2.CC_STAT_AREA] < min_area:
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        w = int(stats[i, cv2.CC_STAT_WIDTH]); h = int(stats[i, cv2.CC_STAT_HEIGHT])
+        if area < min_area:
+            continue
+        fill = area / (w * h + 1e-6)               # bbox 채움비 — 균열은 성기게(낮음), 덩어리는 높음
+        thickness = area / (max(w, h) + 1e-6)      # 평균두께(면적/장축) — 균열은 얇음
+        # 덩어리(꽉 참) 또는 두꺼운 성분 = 텍스처 오탐 → 제거. 대각 균열도 fill·두께 낮아 통과.
+        if fill > config.SEG_MAX_FILL or thickness > max_width:
             continue
         x = int(stats[i, cv2.CC_STAT_LEFT]); y = int(stats[i, cv2.CC_STAT_TOP])
-        w = int(stats[i, cv2.CC_STAT_WIDTH]); h = int(stats[i, cv2.CC_STAT_HEIGHT])
+        mask[lbl == i] = 255
         res.detections.append(
             Detection(box=[x, y, x + w, y + h],
                       conf=mconf if mconf > 0 else 0.5, cls=0, label="crack"))
