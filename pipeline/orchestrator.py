@@ -10,7 +10,7 @@
 import hashlib
 
 import config
-from pipeline import triage, detector, features, rules, rag, report, postprocess, segmenter
+from pipeline import triage, detector, features, rules, rag, report, postprocess, segmenter, roi_triage
 from schemas import AgentState, Stage, DetectResult
 
 
@@ -37,8 +37,22 @@ def analyze(img_bgr, image_hash_str: str = "", progress=None, skip_report=False,
             else Stage.REJECTED
         return state
 
-    # [하이브리드] crack 모델 + defect6 모델 조합 (기본 ON)
-    if detector.is_hybrid_ready():
+    # [ROI 기반 2단계 탐지] 배경/원거리 오탐 감소 (활성화 시)
+    rois_used = None
+    if config.ROI_TRIAGE_ENABLED and roi_triage.is_enabled():
+        _p("② ROI 추출 (Claude Vision)")
+        # detector 함수 선택
+        if detector.is_hybrid_ready():
+            det_fn = detector.detect_hybrid
+        else:
+            det_fn = detector.detect
+        det, rois_used = roi_triage.detect_with_roi(img_bgr, det_fn)
+        if rois_used:
+            _p(f"② ROI {len(rois_used)}개 영역 탐지 완료")
+        else:
+            _p("② 전체 이미지 탐지 (ROI 분리 불필요)")
+    # [기존 방식] 하이브리드 또는 단일 모델
+    elif detector.is_hybrid_ready():
         _p("② 결함 탐지 (하이브리드: crack + defect6)")
         det = detector.detect_hybrid(img_bgr)
     else:
@@ -68,6 +82,7 @@ def analyze(img_bgr, image_hash_str: str = "", progress=None, skip_report=False,
             crack_mask = None
     state.detect = det
     state.crack_mask = crack_mask
+    state.rois = rois_used  # ROI 모드 사용 시 영역 좌표 저장 (시각화용)
 
     _p("③ 형태 특징 추출 (OpenCV)")
     state.features = features.extract(img_bgr, state.detect)

@@ -229,6 +229,11 @@ except ValueError:
 # 비전 모델은 보고서 LLM과 동일 키·모델 재사용(ANTHROPIC_*). 필요시 별도 지정 가능.
 VISION_MODEL = _env("VISION_MODEL", "") or ANTHROPIC_MODEL
 
+# ---- [고도화] ROI 기반 2단계 탐지 (roi_triage) ----
+# 원거리/배경 포함 이미지에서 오탐 감소. Claude Vision이 ROI 좌표 반환 → 해당 영역만 YOLO.
+# 기본 ON. 근접 촬영은 full_image_ok=true로 기존과 동일, 원거리/배경만 ROI 분리.
+ROI_TRIAGE_ENABLED = _env("ROI_TRIAGE_ENABLED", "1") not in ("0", "false", "no", "off")
+
 # ---- [고도화] 멀티턴 정보 수집 (multiturn) ----
 # 보고서 기본현황(시설물명·위치·점검자 등)을 대화로 수집. 기본 OFF.
 # 검증 완료 후 MULTITURN_ENABLED=1 로 활성화.
