@@ -106,17 +106,36 @@ with st.sidebar:
     st.header("시스템 상태")
     st.write(f"🏷️ 배포 라인: **{config.APP_VARIANT}**")
     st.caption(config.APP_VARIANT_DESC)
+
+    st.divider()
+    st.subheader("파이프라인")
     _tri = triage.provider_label()
-    st.write(f"{'🟢' if _tri == 'Claude 비전' else '🟡'} 1차 트리아지: {_tri}")
-    st.write("🟢 탐지 모델" if detector.is_ready() else "🔴 탐지 모델 (가중치 없음)")
-    st.write("🟢 RAG 지식베이스" if rag.is_ready() else "🟡 RAG (인덱스 미구축)")
+    _roi = "활성" if config.ROI_TRIAGE_ENABLED else "비활성"
+    st.write(f"{'🟢' if _tri == 'Claude 비전' else '🟡'} 트리아지: {_tri}")
+    st.write(f"{'🟢' if config.ROI_TRIAGE_ENABLED else '⚪'} ROI 모드: {_roi}")
+    _hybrid = "하이브리드" if config.HYBRID_DETECT_ENABLED and detector.is_hybrid_ready() else "단일모델"
+    st.write(f"🟢 탐지: {_hybrid}" if detector.is_ready() else "🔴 탐지 모델 없음")
+    st.write("🟢 RAG 지식베이스" if rag.is_ready() else "🟡 RAG (미구축)")
     _prov = report.provider_label()
-    st.write(f"{'🟢' if _prov != '목업' else '🟡'} 보고서 LLM: {_prov}")
+    st.write(f"{'🟢' if _prov != '목업' else '🟡'} 보고서: {_prov}")
+    st.write(f"{'🟢' if pdf_export.is_available() else '🟡'} PDF: {'활성' if pdf_export.is_available() else 'fpdf2 필요'}")
+
     st.divider()
     st.subheader("모델 성능")
     m = config.MODEL_METRICS
-    st.metric("mAP50", m["mAP50"])
-    st.metric("Recall", m["recall"])
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        st.metric("mAP50", f"{m['mAP50']:.1%}")
+        st.metric("Precision", f"{m['precision']:.1%}")
+    with col_m2:
+        st.metric("mAP50-95", f"{m['mAP50_95']:.1%}")
+        st.metric("Recall", f"{m['recall']:.1%}")
+
+    st.divider()
+    st.subheader("탐지 대상 결함")
+    defect_list = "균열 · 박리 · 백태 · 철근노출 · 강재손상 · 도장손상"
+    st.caption(defect_list)
+
     st.divider()
     st.subheader("테스트 옵션")
     skip_report = st.toggle("⚡ 빠른 테스트 (보고서 생략)", value=False,
@@ -153,22 +172,42 @@ st.subheader("1-1) 시설물 정보 (선택)")
 with st.expander("📝 보고서에 들어갈 정보 입력", expanded=False):
     col1, col2 = st.columns(2)
     with col1:
-        facility_name = st.text_input("시설물명", placeholder="예: ○○아파트 101동")
-        location = st.text_input("위치", placeholder="예: 서울시 강남구 ○○로 123")
+        facility_name = st.text_input("시설물명", placeholder="예: ○○아파트 101동",
+                                      value=st.session_state.get("user_info", {}).get("facility_name", ""))
+        location = st.text_input("위치", placeholder="예: 서울시 강남구 ○○로 123",
+                                 value=st.session_state.get("user_info", {}).get("location", ""))
     with col2:
-        inspector = st.text_input("점검자", placeholder="예: 홍길동")
-        part_detail = st.text_input("점검 부위 상세", placeholder="예: 지하주차장 B2층 기둥")
-    remarks = st.text_area("비고", placeholder="특이사항이나 추가 메모", height=68)
+        inspector = st.text_input("점검자", placeholder="예: 홍길동",
+                                  value=st.session_state.get("user_info", {}).get("inspector", ""))
+        part_detail = st.text_input("점검 부위 상세", placeholder="예: 지하주차장 B2층 기둥",
+                                    value=st.session_state.get("user_info", {}).get("part_detail", ""))
+    remarks = st.text_area("비고", placeholder="특이사항이나 추가 메모", height=68,
+                           value=st.session_state.get("user_info", {}).get("remarks", ""))
 
-# 사용자 입력을 세션에 저장
-user_info = {
+    # 반영 버튼
+    if st.button("📋 보고서에 반영", type="primary", use_container_width=True):
+        st.session_state["user_info"] = {
+            "facility_name": facility_name.strip() if facility_name else "",
+            "location": location.strip() if location else "",
+            "inspector": inspector.strip() if inspector else "",
+            "part_detail": part_detail.strip() if part_detail else "",
+            "remarks": remarks.strip() if remarks else "",
+        }
+        # 캐시 무효화하여 보고서 재생성
+        st.session_state["cache_key"] = None
+        st.success("정보가 반영되었습니다. 분석이 다시 시작됩니다.")
+        st.rerun()
+
+# 사용자 입력을 세션에 저장 (버튼 클릭 전에도 기본 저장)
+user_info = st.session_state.get("user_info", {
     "facility_name": facility_name.strip() if facility_name else "",
     "location": location.strip() if location else "",
     "inspector": inspector.strip() if inspector else "",
     "part_detail": part_detail.strip() if part_detail else "",
     "remarks": remarks.strip() if remarks else "",
-}
-st.session_state["user_info"] = user_info
+})
+if "user_info" not in st.session_state:
+    st.session_state["user_info"] = user_info
 
 data = up.getvalue()   # 촬영·업로드 공통 (read()와 달리 재호출 안전)
 img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)   # BGR
@@ -275,7 +314,7 @@ with st.expander("📚 안전기준 근거 (RAG)", expanded=bool(rag_res.evidenc
     else:
         st.info("RAG 지식베이스가 아직 구축되지 않았습니다. build_index 실행 후 표시됩니다.")
 
-# ---- 3) 점검 보고서 초안 (현업 6섹션 서식) ----
+# ---- 3) 점검 보고서 초안 (현업 7섹션 서식) ----
 st.subheader("3) 점검 보고서 초안")
 if rep is None:
     st.info("⚡ 빠른 테스트 모드: 보고서 생성이 생략되었습니다. 사이드바에서 토글을 끄면 보고서가 생성됩니다.")

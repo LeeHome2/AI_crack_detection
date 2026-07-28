@@ -1,6 +1,6 @@
 """
 PDF 보고서 내보내기 (pdf_export.py)
-- 원본 사진, 탐지 결과 이미지, 6섹션 보고서를 PDF로 생성
+- 원본 사진, 탐지 결과 이미지, 7섹션 보고서를 PDF로 생성
 - fpdf2 사용 (pip install fpdf2)
 - 한글 폰트 자동 설정 (맑은 고딕 or NanumGothic)
 """
@@ -167,14 +167,15 @@ def generate_pdf(
         pdf.image(annot_path, x=15, w=180)
         pdf.ln(8)
 
-        # 보고서 섹션들
+        # 보고서 섹션들 (7섹션)
         sections = [
             ("1. 기본현황", report.basic_info),
             ("2. 점검결과", report.inspection_result),
             ("3. 안전등급", report.safety_grade),
             ("4. 종합의견", report.overall_opinion),
-            ("5. 판단근거", report.evidence_basis),
-            ("6. 유의사항", report.caveats),
+            ("5. 권고사항", report.recommendations),
+            ("6. 판단근거", report.evidence_basis),
+            ("7. 유의사항", report.caveats),
         ]
 
         for title, content in sections:
