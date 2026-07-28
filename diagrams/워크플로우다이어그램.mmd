@@ -1,0 +1,21 @@
+flowchart TD
+  U([사진 업로드 · 모바일]) --> T[비전 트리아지<br/>적합성 게이트 + 육안 메타]
+  T -->|부적합 · 원거리/흐림| RT([재촬영 · 반려 안내])
+  T -->|적합| ROI{원거리 · 배경 포함?}
+  ROI -->|예| RV[ROI 추출 · Claude Vision<br/>결함 영역만 크롭]
+  ROI -->|아니오 · 근접| D
+  RV --> D[결함 탐지<br/>bbox 2모델 하이브리드<br/>crack 전용 + defect6]
+  D --> PP[후처리<br/>이음새 필터 · 박스 병합 · 개수 보정]
+  PP --> F[형태 특징 추출<br/>OpenCV 스켈레톤 · 길이/폭/개수]
+  F --> RULE[Rule 위험도 산정<br/>점수 → 등급]
+  F --> RAG[RAG 근거 검색<br/>Solar 임베딩 + ChromaDB]
+  RULE --> REP[보고서 생성<br/>Claude → Solar → 목업]
+  RAG --> REP
+  REP --> OUT([결과 화면<br/>등급 · 근거 · 7섹션 보고서 · PDF])
+
+  classDef vision fill:#1C7293,stroke:#14425a,color:#fff;
+  classDef core fill:#e8eef1,stroke:#1C7293,color:#14425a;
+  classDef io fill:#21295C,stroke:#21295C,color:#fff;
+  class T,RV vision;
+  class D,PP,F,RULE,RAG,REP core;
+  class U,OUT,RT io;
