@@ -13,8 +13,10 @@
 | 1 | 비전 트리아지 | `pipeline/triage.py` | Claude (`VISION_MODEL`) | 사진 적합성 게이트 + 육안 소견 메타 추출 |
 | 2 | 보고서 서술 생성 | `pipeline/report.py` | Claude → Solar → 목업 | 보고서 서술 3개 섹션 생성 |
 | 3 | RAG 검색 임베딩 | `pipeline/rag.py`·`embedder.py` | Solar 임베딩(비대칭) | 근거 문서 top-k 검색 |
+| 4 | (고도화) 멀티턴 대화 에이전트 | `v3_langgraph/`·`pipeline/multiturn.py` | Claude | 시설물명·위치 등 보고서 기본현황을 대화로 수집(기본 OFF) |
+| 5 | (실험) ROI 2단계 탐지 | `test_roi_triage.py` | Claude Vision | 결함 관심영역(ROI) 좌표 추출 → 해당 영역만 YOLO(배경 오탐 감소). 파이프라인 미통합 |
 
-LLM은 **서술**만 담당한다. 위험도 점수·등급은 Rule 엔진(코드), 근거 문장은 RAG(검색)에서 나오며, 프롬프트에 "재계산 금지·새로 지어내지 말 것"을 명시한다.
+LLM은 **서술·정보수집·영역제안**만 담당한다. 위험도 점수·등급은 Rule 엔진(코드), 근거 문장은 RAG(검색)에서 나오며, 프롬프트에 "재계산 금지·새로 지어내지 말 것"을 명시한다. 아래 1~3은 가동 중인 핵심 지점, 4·5는 고도화/실험(기본 OFF·미통합)이다.
 
 ---
 
