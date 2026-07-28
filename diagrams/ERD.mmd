@@ -1,0 +1,74 @@
+erDiagram
+  AgentState ||--o| TriageResult : "triage"
+  AgentState ||--o| DetectResult : "detect"
+  AgentState ||--o| CrackFeatures : "features"
+  AgentState ||--o| RiskResult : "risk"
+  AgentState ||--o| RagResult : "rag"
+  AgentState ||--o| Report : "report"
+  DetectResult ||--o{ Detection : "detections"
+  RagResult ||--o{ Evidence : "evidences"
+  Evidence }o--|| KnowledgeChunk : "RAG 검색 출처"
+
+  AgentState {
+    string stage "await_image|needs_retake|rejected|analyzed"
+    string image_hash "세션 캐시 키(md5)"
+    object crack_mask "seg 마스크 HxW(옵션)"
+  }
+  TriageResult {
+    string verdict "ok|retake_far|retake_blur|not_crack"
+    bool ok "분석 진행 여부"
+    string provider "claude|heuristic|mock"
+    float blur_score "라플라시안 분산"
+    dict meta "부위·재질·방향·백태·박리·소견"
+  }
+  DetectResult {
+    list image_size "W,H"
+  }
+  Detection {
+    list box "x1,y1,x2,y2"
+    float conf "신뢰도"
+    int cls "클래스 id"
+    string label "crack|spalling|efflorescence|rebar_exposure|steel_defect|paint_damage"
+  }
+  CrackFeatures {
+    int crack_count "물리적 균열 개수"
+    float max_length_ratio "최장균열/대각선"
+    float avg_width_px "평균 폭(px)"
+    float max_confidence "균열 최고 신뢰도"
+    dict defects "면적결함 요약(label→count,conf)"
+  }
+  RiskResult {
+    int score "0~100"
+    string grade "정상|주의|위험|긴급"
+    list contributions "rule·detail·points"
+  }
+  RagResult {
+    list evidences "근거 목록"
+  }
+  Evidence {
+    string text "근거 문장"
+    float score "1-거리(코사인 유사도)"
+    string title "기준명"
+    string doc_type "법령·고시·설계기준·세부지침·시방·판례"
+    string publisher "발행처"
+    string url "원문 링크"
+    string defect "결함 태그"
+  }
+  Report {
+    string basic_info "1.기본현황"
+    string inspection_result "2.점검결과"
+    string safety_grade "3.안전등급"
+    string overall_opinion "4.종합의견"
+    string evidence_basis "5.판단근거(RAG)"
+    string caveats "6.유의사항"
+  }
+  KnowledgeChunk {
+    string id "청크 ID"
+    string document "본문(임베딩 대상)"
+    vector embedding "Solar passage 벡터"
+    string title "기준명"
+    string doc_type "문서종류"
+    string publisher "발행처"
+    string url "원문 링크"
+    string defect "결함 태그"
+  }
