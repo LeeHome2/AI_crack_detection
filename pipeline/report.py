@@ -1,9 +1,9 @@
 """
 [6] LLM 보고서 생성 (report.py)
-- 현업(FMS·국토안전관리원) 정기안전점검 결과보고서 6섹션 서식으로 초안 생성
-  1 기본현황 · 2 점검결과 · 3 안전등급 · 4 종합의견 · 5 판단근거(RAG) · 6 유의사항
+- 현업(FMS·국토안전관리원) 정기안전점검 결과보고서 7섹션 서식으로 초안 생성
+  1 기본현황 · 2 점검결과 · 3 안전등급 · 4 종합의견 · 5 권고사항 · 6 판단근거(RAG) · 7 유의사항
 - 점수/등급은 Rule 결과를 그대로 사용 (LLM이 재산정 금지)
-- 결정적 섹션(1 기본현황·5 판단근거·6 유의사항)은 코드가 조립하고,
+- 결정적 섹션(1 기본현황·5 권고사항·6 판단근거·7 유의사항)은 코드가 조립하고,
   서술 섹션(2 점검결과·3 안전등급·4 종합의견)만 LLM/목업이 작성 → 환각·출처 오염 방지
 - API 키 없으면 템플릿 목업 반환 (오프라인/개발 시연용)
 """
@@ -231,6 +231,52 @@ def _mock_safety_grade(risk: RiskResult) -> str:
     )
 
 
+def _recommendations(feat: CrackFeatures, risk: RiskResult) -> str:
+    """5. 권고사항 — 결함 유형별 조치 권장 내용."""
+    defects = getattr(feat, "defects", None) or {}
+    lines = []
+
+    # 등급별 기본 권고
+    if risk.grade == "긴급":
+        lines.append("🔴 **즉시 조치 필요**")
+        lines.append("- 즉시 전문가 정밀진단 및 긴급 보수 시행")
+        lines.append("- 해당 구역 사용 제한 검토")
+    elif risk.grade == "위험":
+        lines.append("🟠 **전문가 점검 권고**")
+        lines.append("- 빠른 시일 내 전문가 정밀점검 필요")
+        lines.append("- 보수·보강 계획 수립")
+    elif risk.grade == "주의":
+        lines.append("🟡 **정기 관찰 필요**")
+        lines.append("- 정기적 상태 모니터링 (3~6개월 주기)")
+        lines.append("- 결함 진행 여부 기록")
+    else:
+        lines.append("🟢 **양호**")
+        lines.append("- 주기적 상태 관찰 유지")
+
+    lines.append("")
+    lines.append("**결함별 조치 방향**")
+
+    # 복합 결함별 조치 방향(고위험 결함 우선)
+    if "rebar_exposure" in defects:
+        lines.append("- ⚠️ **철근노출**: 부식·단면손실 우려 → 방청처리 및 단면복구 필요")
+    if "spalling" in defects:
+        lines.append("- ⚠️ **박리/박락**: 들뜬 부위 제거 후 단면복구 권고")
+    if "efflorescence" in defects:
+        lines.append("- 💧 **백태(누수흔적)**: 누수 원인 규명 및 방수 보수 검토")
+    if "steel_defect" in defects:
+        lines.append("- 🔧 **강재손상**: 부식 정도 확인 및 방청·도장 보수")
+    if "paint_damage" in defects:
+        lines.append("- 🎨 **도장손상**: 재도장 또는 표면처리 권고")
+
+    if feat.crack_count > 0:
+        lines.append("- 🔍 **균열**: 폭 0.3mm 초과 또는 진행성 균열 시 충전/주입 보수 필요")
+
+    lines.append("")
+    lines.append("⚠️ 구조적 원인(하중, 부등침하 등) 가능성 배제 불가 → **전문가 정밀점검 권고**")
+
+    return "\n".join(lines)
+
+
 def _mock_overall_opinion(feat: CrackFeatures, risk: RiskResult) -> str:
     defects = getattr(feat, "defects", None) or {}
 
@@ -245,22 +291,7 @@ def _mock_overall_opinion(feat: CrackFeatures, risk: RiskResult) -> str:
         head = "🟢 **양호** — 현재 뚜렷한 위험 신호는 없습니다. 주기적으로 상태를 관찰하시기 바랍니다."
 
     lines = [head, ""]
-
-    # 조치 권고사항
-    lines.append("**권고 조치사항**")
-
-    # 복합 결함별 조치 방향(고위험 결함 우선 고지)
-    if "rebar_exposure" in defects:
-        lines.append("- ⚠️ **철근노출** 확인 → 부식·단면손실 우려. 방청처리 및 단면복구 필요")
-    if "spalling" in defects:
-        lines.append("- ⚠️ **박리/박락** 확인 → 들뜬 부위 제거 후 단면복구 권고")
-    if "efflorescence" in defects:
-        lines.append("- 💧 **백태(누수흔적)** 확인 → 누수 원인 규명 및 방수 보수 검토")
-
-    if feat.crack_count > 0:
-        lines.append("- 균열폭 0.3mm 초과 또는 시간에 따른 진행(확장) 시 적극적 보수(충전/주입) 필요")
-
-    lines.append("- 구조적 원인(하중, 부등침하 등) 가능성 배제 불가 → **전문가 정밀점검 권고**")
+    lines.append("구조적 원인(하중, 부등침하 등) 가능성 배제 불가 시 **전문가 정밀점검**을 권고합니다.")
 
     return "\n".join(lines)
 
@@ -491,6 +522,7 @@ def generate(feat: CrackFeatures, risk: RiskResult, rag: RagResult,
         inspection_result=narr["inspection_result"],
         safety_grade=narr["safety_grade"],
         overall_opinion=narr["overall_opinion"],
+        recommendations=_recommendations(feat, risk),
         evidence_basis=_evidence_basis(rag),
         caveats=_caveats(),
     )
