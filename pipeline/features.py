@@ -18,24 +18,43 @@ except Exception:
 
 def _crack_mask(gray_crop):
     """균열 픽셀 마스크 추출 + 텍스처 노이즈 제거.
-    - adaptive threshold로 어두운 선 추출
-    - 연결요소 중 '균열다운' 것(충분히 크고 가늘고 긴)만 남김 → 화강암/거친 표면 speckle 제거
+
+    하이브리드 접근:
+    1. Adaptive threshold (거친 텍스처 표면에 효과적)
+    2. Canny edge (깨끗한 벽면의 얇은 균열에 효과적)
+    두 결과를 합쳐서 최종 마스크 생성.
     """
+    h, w = gray_crop.shape[:2]
+    min_area = max(20, int(0.0002 * h * w))
+    keep = np.zeros((h, w), np.uint8)
+
+    # 방법 1: Adaptive threshold (기존 방식, 거친 표면용)
     binv = cv2.adaptiveThreshold(
         gray_crop, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY_INV, blockSize=25, C=10)
-    binv = cv2.morphologyEx(binv, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    binv = cv2.morphologyEx(binv, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
+    keep = _filter_crack_components(binv, keep, min_area)
 
+    # 방법 2: Canny edge (깨끗한 벽면용) - 결과가 부족할 때 보완
+    if keep.sum() < 50:  # 마스크 픽셀이 부족하면 Canny 시도
+        canny = cv2.Canny(gray_crop, 50, 150)
+        keep = _filter_crack_components(canny, keep, min_area=30)
+
+    return keep
+
+
+def _filter_crack_components(binv, keep, min_area=20):
+    """연결 요소 필터링: 균열 형태(가늘고 긴)만 남김."""
     n, lbl, stats, _ = cv2.connectedComponentsWithStats(binv, connectivity=8)
-    h, w = gray_crop.shape[:2]
-    min_area = max(30, int(0.002 * h * w))     # 너무 작은 speckle 제거
-    keep = np.zeros_like(binv)
     for i in range(1, n):
         area = stats[i, cv2.CC_STAT_AREA]
         bw, bh = stats[i, cv2.CC_STAT_WIDTH], stats[i, cv2.CC_STAT_HEIGHT]
-        elong = max(bw, bh) / (min(bw, bh) + 1e-6)   # 균열은 가늘고 긺
-        fill = area / (bw * bh + 1e-6)                # 균열은 bbox를 성기게 채움
+        elong = max(bw, bh) / (min(bw, bh) + 1e-6)
+        fill = area / (bw * bh + 1e-6)
+        # 균열 조건: 충분히 크고, 가늘고, bbox를 성기게 채움
         if area >= min_area and elong >= 3.0 and fill <= 0.6:
+            keep[lbl == i] = 255
+        elif area >= 10 and elong >= 5.0 and fill <= 0.3:
             keep[lbl == i] = 255
     return keep
 
