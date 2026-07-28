@@ -53,6 +53,7 @@ HYBRID_DETECT_ENABLED = _env("HYBRID_DETECT_ENABLED", "1") not in ("0", "false",
 # Crack 전용 모델 (하이브리드용)
 _CRACK_MODEL_CANDIDATES = [
     _env("CRACK_MODEL_WEIGHTS", ""),
+    os.path.join(BASE_DIR, "models", "yolov8s_crack_tiled_best.pt"),  # LFS 커밋된 배포용
     os.path.join(BASE_DIR, "runs", "detect", "runs", "crack", "train_tiled_v1", "weights", "best.pt"),
     os.path.join(BASE_DIR, "runs", "detect", "runs", "crack", "train_v1", "weights", "best.pt"),
     _YOLO_CRACK,
