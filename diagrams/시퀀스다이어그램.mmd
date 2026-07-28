@@ -14,7 +14,11 @@ sequenceDiagram
     T-->>U: 재촬영 안내 → 종료
   else 적합
     T-->>App: ok + 육안 소견(defects_observed)
-    App->>D: 결함 탐지
+    opt 원거리·배경 포함 (ROI 2단계, 기본 ON)
+      App->>T: 관심영역(ROI) 좌표 요청 (Claude Vision)
+      T-->>App: 결함 영역 ROI (근접이면 full_image_ok=true)
+    end
+    App->>D: 결함 탐지 (ROI 영역 또는 전체 이미지)
     Note over D: 균열=crack 전용 모델 / 면적결함=defect6<br/>(bbox 2모델 하이브리드)<br/>※seg 마스크(72.2%)는 고도화·기본 OFF
     D-->>F: 탐지 결과(6종 박스)
     F->>R: 특징(길이·폭·개수·복합)

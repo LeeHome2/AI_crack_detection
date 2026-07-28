@@ -13,6 +13,7 @@ erDiagram
     string stage "await_image|needs_retake|rejected|analyzed"
     string image_hash "세션 캐시 키(md5)"
     object crack_mask "seg 마스크 HxW(옵션)"
+    list rois "ROI 2단계 탐지 영역(옵션·시각화용)"
   }
   TriageResult {
     string verdict "ok|retake_far|retake_blur|not_crack"

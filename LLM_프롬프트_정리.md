@@ -11,12 +11,12 @@
 | # | 지점 | 파일 | 모델(기본) | 역할 |
 |---|---|---|---|---|
 | 1 | 비전 트리아지 | `pipeline/triage.py` | Claude (`VISION_MODEL`) | 사진 적합성 게이트 + 육안 소견 메타 추출 |
+| 1-B | ROI 2단계 탐지 | `pipeline/roi_triage.py` | Claude Vision | 원거리/배경 이미지에서 결함 관심영역(ROI) 좌표 추출 → 해당 영역만 YOLO(배경 오탐 감소). **기본 ON** |
 | 2 | 보고서 서술 생성 | `pipeline/report.py` | Claude → Solar → 목업 | 보고서 서술 3개 섹션 생성 |
 | 3 | RAG 검색 임베딩 | `pipeline/rag.py`·`embedder.py` | Solar 임베딩(비대칭) | 근거 문서 top-k 검색 |
 | 4 | (고도화) 멀티턴 대화 에이전트 | `v3_langgraph/`·`pipeline/multiturn.py` | Claude | 시설물명·위치 등 보고서 기본현황을 대화로 수집(기본 OFF) |
-| 5 | (실험) ROI 2단계 탐지 | `test_roi_triage.py` | Claude Vision | 결함 관심영역(ROI) 좌표 추출 → 해당 영역만 YOLO(배경 오탐 감소). 파이프라인 미통합 |
 
-LLM은 **서술·정보수집·영역제안**만 담당한다. 위험도 점수·등급은 Rule 엔진(코드), 근거 문장은 RAG(검색)에서 나오며, 프롬프트에 "재계산 금지·새로 지어내지 말 것"을 명시한다. 아래 1~3은 가동 중인 핵심 지점, 4·5는 고도화/실험(기본 OFF·미통합)이다.
+LLM은 **서술·정보수집·영역제안**만 담당한다. 위험도 점수·등급은 Rule 엔진(코드), 근거 문장은 RAG(검색)에서 나오며, 프롬프트에 "재계산 금지·새로 지어내지 말 것"을 명시한다. 1·1-B·2·3은 가동 중인 핵심 지점, 4는 고도화(기본 OFF)다. ※ ROI(1-B)가 켜져 있으면 이미지 1장 분석에 **Claude Vision이 2회 호출**된다(트리아지 게이트 + ROI 추출). 두 호출 모두 API 키가 없거나 실패하면 안전하게 폴백(트리아지→heuristic, ROI→전체 이미지 탐지)한다.
 
 ---
 
@@ -71,6 +71,32 @@ LLM은 **서술·정보수집·영역제안**만 담당한다. 위험도 점수�
 ```
 
 **후처리** — `_parse_vision()`이 응답에서 `{ … }` JSON 블록만 정규식으로 추출(코드펜스·잡텍스트 방어). 비전이 말한 한국어 결함명은 `_VISION_DEFECT_MAP`으로 정규 라벨(crack/spalling/…)로 매핑해 detector·Rule과 정합시킨다.
+
+### 1-B. ROI 2단계 탐지 (Claude Vision · 기본 ON)
+
+**목적** — 원거리·전경 사진에서 배경(하늘·나무·다른 건물·차량)까지 YOLO가 훑어 생기는 오탐을 줄인다. Claude Vision이 **결함이 있는 관심영역(ROI)** 좌표만 먼저 골라주고, 그 영역만 크롭해 YOLO를 돌린 뒤 좌표를 원본 기준으로 되돌려 병합한다. 근접 촬영은 `full_image_ok=true`로 판단해 **기존 전체 이미지 탐지와 동일**하게 동작한다.
+
+**호출 정보**
+
+| 항목 | 값 |
+|---|---|
+| 파일 | `pipeline/roi_triage.py` · `detect_with_roi()` |
+| 모델 | `config.VISION_MODEL` (트리아지와 동일 Claude) · max_tokens 600 |
+| 활성 | `ROI_TRIAGE_ENABLED=1` (기본 ON) + API 키 있을 때 |
+| 흐름 | ① Vision이 ROI 좌표(0~1 비율) 반환 → ② 각 ROI 크롭 후 YOLO(하이브리드/단일) → ③ 좌표 원복·병합 |
+| 폴백 | API 키 없음·JSON 실패·예외 → `full_image_ok=true` 처리 = 전체 이미지 탐지(데모 안전) |
+
+**프롬프트 요지** (전문은 `pipeline/roi_triage.py`)
+
+```text
+당신은 시설물 안전점검 AI의 '관심 영역(ROI) 식별' 담당입니다.
+- full_image_ok=true : 근접 촬영(벽면/바닥이 화면 70%+)·결함이 전면 분포 → ROI 분리 불필요
+- full_image_ok=false: 원거리·전경(하늘·나무·차량 등 배경 30%+)·비대상 영역 존재 → ROI 분리
+ROI 규칙: 결함 콘크리트 영역을 넉넉히(주변 여유 20%+), ROI 하나가 화면 30%+ 면적, 배경만 제외
+출력(JSON): {"rois":[{x1,y1,x2,y2(0~1),description,defect_type}], "full_image_ok":bool, "reason":...}
+```
+
+**효과(테스트)** — 원거리/배경 포함 이미지에서 오탐 감소(예: 균열 11→8, 박리 32→27). 근접 촬영 이미지는 `full_image_ok`으로 기존과 동일.
 
 ---
 
