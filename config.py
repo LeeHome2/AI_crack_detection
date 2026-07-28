@@ -121,8 +121,8 @@ except ValueError:
 # ---- Rule Engine 임계값 ----
 # ※ 재보정: 이 모델은 신뢰도가 낮게 압축돼 있음(폰 100장 테스트 max 0.36).
 #   기획안의 0.80은 잘 보정된 0~1 신뢰도 가정 → 도달 불가라 실제 분포에 맞춰 계단식으로.
-RULE_CONF_STRONG = 0.28    # 강한 탐지 (상위권 신뢰도)
-RULE_CONF_MODERATE = 0.20  # 약한 탐지
+RULE_CONF_STRONG = 0.10    # 강한 탐지 — 낮은 신뢰도 모델 특성 반영 (10%+)
+RULE_CONF_MODERATE = 0.05  # 약한 탐지 — 박스 위치 정확하면 낮은 신뢰도도 인정 (5%+)
 RULE_COUNT_MANY = 3        # 균열 다수
 RULE_COUNT_SEVERE = 5      # 균열 매우 다수
 RULE_LENGTH_HIGH = 0.15    # 최장 균열 길이비(대각선 대비) 큰 편
@@ -229,6 +229,10 @@ except ValueError:
 # 비전 모델은 보고서 LLM과 동일 키·모델 재사용(ANTHROPIC_*). 필요시 별도 지정 가능.
 VISION_MODEL = _env("VISION_MODEL", "") or ANTHROPIC_MODEL
 
+# ---- [고도화] 멀티턴 정보 수집 (multiturn) ----
+# 보고서 기본현황(시설물명·위치·점검자 등)을 대화로 수집. 기본 OFF.
+# 검증 완료 후 MULTITURN_ENABLED=1 로 활성화.
+MULTITURN_ENABLED = _env("MULTITURN_ENABLED", "0") not in ("0", "false", "no", "off", "")
 # 자가진단 등급(정상/주의/위험/긴급) → 현업 상태평가등급(A~E) 참고 매핑
 STATE_GRADE_MAP = {
     "정상": "A~B등급 (양호)",

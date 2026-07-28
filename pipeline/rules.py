@@ -60,9 +60,31 @@ def _score_defects(feat: CrackFeatures, contribs: list) -> int:
     return score
 
 
-def evaluate(feat: CrackFeatures, rag: RagResult = None) -> RiskResult:
+def evaluate(feat: CrackFeatures, rag: RagResult = None, triage_meta: dict = None) -> RiskResult:
     contribs = []
     score = 0
+
+    # [신규] 비전 트리아지 관찰 기반 점수 — YOLO 신뢰도가 낮아도 비전이 결함을 확인하면 가점
+    vision_defects = (triage_meta or {}).get("defects_observed", [])
+    vision_boost_applied = False
+    if vision_defects and feat.max_confidence < config.RULE_CONF_MODERATE:
+        # 비전이 균열을 확인했는데 YOLO 신뢰도가 낮은 경우
+        if "crack" in vision_defects:
+            score += 20
+            contribs.append({"rule": "비전 균열 확인",
+                             "detail": f"AI 비전이 균열 관찰 (YOLO 신뢰도 {feat.max_confidence:.2f} < {config.RULE_CONF_MODERATE})",
+                             "points": 20})
+            vision_boost_applied = True
+        # 비전이 다른 결함도 확인한 경우 추가 가점
+        other_defects = [d for d in vision_defects if d != "crack"]
+        if other_defects:
+            bonus = min(len(other_defects) * 10, 20)  # 최대 20점
+            score += bonus
+            defect_names = ", ".join(config.DEFECT_KO.get(d, d) for d in other_defects)
+            contribs.append({"rule": "비전 복합결함 확인",
+                             "detail": f"AI 비전이 관찰: {defect_names}",
+                             "points": bonus})
+            vision_boost_applied = True
 
     # 균열 탐지 — 계단식(신뢰도가 낮게 압축된 모델 특성 반영)
     if feat.max_confidence >= config.RULE_CONF_STRONG:
@@ -101,9 +123,11 @@ def evaluate(feat: CrackFeatures, rag: RagResult = None) -> RiskResult:
 
     # 탐지 신호 유무 — 실제로 '탐지된 결함'이 있을 때만 아래 RAG 가점을 준다.
     #  (원거리·전경처럼 모델이 아무것도 못 잡은 사진이 RAG 근거만으로 점수를 받던 문제 차단)
+    #  [신규] 비전 트리아지가 결함을 관찰한 경우도 탐지로 인정
     has_detection = (feat.crack_count > 0
                      or feat.max_confidence >= config.RULE_CONF_MODERATE
-                     or comp_score > 0)
+                     or comp_score > 0
+                     or vision_boost_applied)
 
     # RAG 긴급기준 매칭 — ChromaDB는 관련도와 무관하게 항상 top-k를 반환하므로
     # '근거가 있으면 무조건 +20'이면 모든 사진이 가점을 받아 계단식 보정이 깨진다.

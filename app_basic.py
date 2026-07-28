@@ -1,11 +1,14 @@
 """
-AI 시설물 균열 안전점검 시스템 — Streamlit 앱 (모바일 대응)
-실행: (venv) streamlit run app.py
+AI 시설물 균열 안전점검 시스템 — Streamlit 앱 (기본 버전, 대화 에이전트 없음)
+실행: (venv) streamlit run app_basic.py
 
 구조: UI(이 파일)는 얇게 — 입력·렌더·세션관리만. 파이프라인 흐름은 pipeline/orchestrator.
 - 세션 캐시(st.session_state): 같은 사진이면 재분석 안 함 (Streamlit 재실행마다 YOLO 재계산 방지).
 - 탐지 이미지에 OpenCV 스켈레톤(균열 중심선) 오버레이 — 재학습 없는 시각 품질 개선.
 - 모바일 웹: st.camera_input(폰 카메라 직촬) + st.file_uploader(원본 업로드). 모델/API 없어도 동작.
+
+※ 이 파일은 대화형 정보 보충(LangGraph 에이전트) 없이 사진 분석 + 보고서 생성만 수행하는 기본 버전입니다.
+   전체 기능(에이전트 포함)은 app.py를 사용하세요.
 """
 import numpy as np
 import cv2
@@ -95,16 +98,16 @@ def _no_strike(s) -> str:
     return str(s).replace("~", "\\~")
 
 
-st.set_page_config(page_title=f"시설물 안전점검 · {config.APP_VARIANT}",
+st.set_page_config(page_title=f"시설물 안전점검 · {config.APP_VARIANT} (기본)",
                    page_icon="🧱", layout="centered")
 st.title("🧱 AI 시설물 안전점검")
-st.caption(f"🏷️ **{config.APP_VARIANT}** — {config.APP_VARIANT_DESC}")
+st.caption(f"🏷️ **{config.APP_VARIANT}** (기본 버전) — {config.APP_VARIANT_DESC}")
 st.caption("시설물 결함(균열·철근노출·박리·누수 등) 사진을 올리면 위험도를 판정하고 점검 보고서 초안을 만듭니다.")
 
 # ---- 사이드바: 시스템 상태 ----
 with st.sidebar:
     st.header("시스템 상태")
-    st.write(f"🏷️ 배포 라인: **{config.APP_VARIANT}**")
+    st.write(f"🏷️ 배포 라인: **{config.APP_VARIANT}** (기본)")
     st.caption(config.APP_VARIANT_DESC)
     _tri = triage.provider_label()
     st.write(f"{'🟢' if _tri == 'Claude 비전' else '🟡'} 1차 트리아지: {_tri}")
@@ -318,94 +321,6 @@ else:
         else:
             st.info("PDF 내보내기: `pip install fpdf2` 필요")
 
-# ---- 4) 대화형 정보 보충 (LangGraph 에이전트) ----
-try:
-    from v3_langgraph import InspectionAgent, is_enabled as agent_is_enabled
-    _agent_available = True
-except ImportError:
-    _agent_available = False
-
-if _agent_available:
-    st.divider()
-    st.subheader("4) 대화형 정보 보충")
-    st.caption("AI 어시스턴트와 대화하며 보고서에 필요한 추가 정보를 입력할 수 있습니다.")
-
-    # 에이전트 세션 관리
-    def get_chat_agent():
-        if "chat_agent" not in st.session_state:
-            st.session_state.chat_agent = InspectionAgent()
-            st.session_state.chat_agent_messages = []
-            st.session_state.chat_agent_started = False
-        return st.session_state.chat_agent
-
-    def reset_chat_agent():
-        st.session_state.chat_agent = InspectionAgent()
-        st.session_state.chat_agent_messages = []
-        st.session_state.chat_agent_started = False
-
-    agent = get_chat_agent()
-
-    # 대화 시작
-    if not st.session_state.get("chat_agent_started"):
-        greeting = agent.start()
-        st.session_state.chat_agent_messages = [{"role": "assistant", "content": greeting}]
-        st.session_state.chat_agent_started = True
-
-    # 완료 시 정보 표시 및 적용
-    if agent.is_complete():
-        collected = agent.get_user_info()
-        st.success("정보 수집 완료!")
-
-        with st.expander("수집된 정보", expanded=True):
-            field_names = {
-                "facility_name": "시설물명", "location": "위치", "floor": "층수",
-                "inspector": "점검자", "discovery_time": "발견시점",
-                "detail": "점검부위", "remarks": "비고",
-            }
-            for key, value in collected.items():
-                if value:
-                    label = field_names.get(key, key)
-                    st.write(f"**{label}**: {value}")
-
-        col_apply, col_reset = st.columns(2)
-        with col_apply:
-            if st.button("보고서에 적용", type="primary", use_container_width=True):
-                # 수집된 정보를 user_info에 병합
-                merged = st.session_state.get("user_info", {}).copy()
-                for k, v in collected.items():
-                    if v:
-                        if k == "detail":
-                            merged["part_detail"] = v
-                        else:
-                            merged[k] = v
-                st.session_state["user_info"] = merged
-                st.success("정보가 적용되었습니다. 페이지를 새로고침하면 보고서에 반영됩니다.")
-        with col_reset:
-            if st.button("새 대화 시작", use_container_width=True):
-                reset_chat_agent()
-                st.rerun()
-    else:
-        # 대화 기록 표시
-        for msg in st.session_state.get("chat_agent_messages", []):
-            with st.chat_message(msg["role"]):
-                st.write(msg["content"])
-
-        # 사용자 입력
-        if chat_input := st.chat_input("메시지를 입력하세요...", key="agent_chat"):
-            st.session_state.chat_agent_messages.append({"role": "user", "content": chat_input})
-            response = agent.respond(chat_input)
-            st.session_state.chat_agent_messages.append({"role": "assistant", "content": response})
-            st.rerun()
-
-        # 사이드바에 에이전트 상태 표시
-        with st.sidebar:
-            st.divider()
-            st.subheader("대화 에이전트")
-            st.write(f"턴: {agent.turn_count}")
-            collected = agent.get_user_info()
-            field_names = {"facility_name": "시설물명", "location": "위치", "floor": "층수",
-                           "inspector": "점검자", "discovery_time": "발견시점",
-                           "detail": "점검부위", "remarks": "비고"}
-            for key, value in collected.items():
-                status = "✅" if value else "⬜"
-                st.write(f"{status} {field_names.get(key, key)}")
+# ---- 안내 ----
+st.divider()
+st.info("💡 대화형 정보 보충 기능이 필요하시면 `streamlit run app.py`로 전체 버전을 실행하세요.")

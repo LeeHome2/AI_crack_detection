@@ -87,9 +87,10 @@ def analyze(img_bgr, image_hash_str: str = "", progress=None, skip_report=False,
         state.features.crack_count = postprocess.physical_crack_count(img_bgr, state.detect)
 
     _p("④ 안전기준 근거 검색 (RAG)")
-    risk_pre = rules.evaluate(state.features)            # RAG 전 1차 위험도
+    triage_meta = getattr(state.triage, "meta", None)    # 비전 트리아지 관찰 결과
+    risk_pre = rules.evaluate(state.features, triage_meta=triage_meta)  # RAG 전 1차 위험도
     state.rag = rag.search(state.features, risk_pre)     # 근거 검색
-    state.risk = rules.evaluate(state.features, state.rag)   # RAG 반영 최종 위험도
+    state.risk = rules.evaluate(state.features, state.rag, triage_meta=triage_meta)  # RAG+비전 반영 최종
 
     if not skip_report:
         _p("⑤ 점검 보고서 생성 (LLM)")
