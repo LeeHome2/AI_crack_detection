@@ -14,10 +14,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# OpenCV 런타임 라이브러리(libgl1·glib) + 헬스체크용 curl
+# OpenCV 런타임 라이브러리(libgl1·glib) + 헬스체크용 curl + 한글 폰트(PDF 보고서용)
 # (cv2.imshow는 쓰지 않으므로 GUI 서버 불필요, libgl1만 있으면 동작)
+# fonts-nanum: pdf_export._find_font() 후보 경로(/usr/share/fonts/truetype/nanum/NanumGothic.ttf)
+#   를 제공 → 없으면 fpdf2가 설치돼도 is_available()=False("fpdf2 필요"로 표시)라 PDF 비활성.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 curl \
+    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 curl fonts-nanum \
     && rm -rf /var/lib/apt/lists/*
 
 # CPU 전용 torch/torchvision 먼저 설치 → 이후 ultralytics가 CUDA 휠을 끌어오지 않게 고정
