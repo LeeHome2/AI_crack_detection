@@ -110,10 +110,12 @@ with st.sidebar:
     st.divider()
     st.subheader("파이프라인")
     _tri = triage.provider_label()
-    _roi = "활성" if config.ROI_TRIAGE_ENABLED else "비활성"
+    _roi_enabled = getattr(config, "ROI_TRIAGE_ENABLED", True)
+    _roi = "활성" if _roi_enabled else "비활성"
     st.write(f"{'🟢' if _tri == 'Claude 비전' else '🟡'} 트리아지: {_tri}")
-    st.write(f"{'🟢' if config.ROI_TRIAGE_ENABLED else '⚪'} ROI 모드: {_roi}")
-    _hybrid = "하이브리드" if config.HYBRID_DETECT_ENABLED and detector.is_hybrid_ready() else "단일모델"
+    st.write(f"{'🟢' if _roi_enabled else '⚪'} ROI 모드: {_roi}")
+    _hybrid_enabled = getattr(config, "HYBRID_DETECT_ENABLED", True)
+    _hybrid = "하이브리드" if _hybrid_enabled and detector.is_hybrid_ready() else "단일모델"
     st.write(f"🟢 탐지: {_hybrid}" if detector.is_ready() else "🔴 탐지 모델 없음")
     st.write("🟢 RAG 지식베이스" if rag.is_ready() else "🟡 RAG (미구축)")
     _prov = report.provider_label()
@@ -141,11 +143,37 @@ with st.sidebar:
     skip_report = st.toggle("⚡ 빠른 테스트 (보고서 생략)", value=False,
                             help="LLM 보고서 생성을 건너뛰어 검출만 빠르게 확인")
 
-# ---- 1) 입력: 업로드(기본) 또는 촬영 (모바일 대응) ----
-# 기본은 '사진 선택'. 촬영은 버튼을 눌러야 카메라가 켜짐(진입 즉시 카메라 안 열림).
-st.subheader("1) 균열 사진 입력")
+# ---- 1) 시설물 정보 입력 (사진 업로드 전에 미리 입력 가능) ----
+st.subheader("1) 시설물 정보")
+st.caption("보고서에 들어갈 정보를 미리 입력하세요. 사진 분석 시 자동 반영됩니다.")
+col1, col2 = st.columns(2)
+with col1:
+    facility_name = st.text_input("시설물명", placeholder="예: ○○아파트 101동",
+                                  value=st.session_state.get("user_info", {}).get("facility_name", ""))
+    location = st.text_input("위치", placeholder="예: 서울시 강남구 ○○로 123",
+                             value=st.session_state.get("user_info", {}).get("location", ""))
+with col2:
+    inspector = st.text_input("점검자", placeholder="예: 홍길동",
+                              value=st.session_state.get("user_info", {}).get("inspector", ""))
+    part_detail = st.text_input("점검 부위 상세", placeholder="예: 지하주차장 B2층 기둥",
+                                value=st.session_state.get("user_info", {}).get("part_detail", ""))
+remarks = st.text_area("비고", placeholder="특이사항이나 추가 메모", height=68,
+                       value=st.session_state.get("user_info", {}).get("remarks", ""))
+
+# 입력값 즉시 세션에 저장 (분석 시 자동 반영)
+user_info = {
+    "facility_name": facility_name.strip() if facility_name else "",
+    "location": location.strip() if location else "",
+    "inspector": inspector.strip() if inspector else "",
+    "part_detail": part_detail.strip() if part_detail else "",
+    "remarks": remarks.strip() if remarks else "",
+}
+st.session_state["user_info"] = user_info
+
+# ---- 2) 사진 입력: 업로드(기본) 또는 촬영 (모바일 대응) ----
+st.subheader("2) 균열 사진 입력")
 mode = st.radio("입력 방식", ["🖼️ 사진 선택", "📷 촬영"],
-                horizontal=True, label_visibility="collapsed")   # 첫 항목=기본값
+                horizontal=True, label_visibility="collapsed")
 up = None
 if mode == "🖼️ 사진 선택":
     up = st.file_uploader("균열 사진 업로드 (원본 고해상도 권장)",
@@ -166,48 +194,6 @@ else:
 if up is None:
     st.info("사진을 촬영하거나 업로드하면 분석이 시작됩니다.")
     st.stop()
-
-# ---- 1.5) 시설물 정보 입력 (보고서용) ----
-st.subheader("1-1) 시설물 정보 (선택)")
-with st.expander("📝 보고서에 들어갈 정보 입력", expanded=False):
-    col1, col2 = st.columns(2)
-    with col1:
-        facility_name = st.text_input("시설물명", placeholder="예: ○○아파트 101동",
-                                      value=st.session_state.get("user_info", {}).get("facility_name", ""))
-        location = st.text_input("위치", placeholder="예: 서울시 강남구 ○○로 123",
-                                 value=st.session_state.get("user_info", {}).get("location", ""))
-    with col2:
-        inspector = st.text_input("점검자", placeholder="예: 홍길동",
-                                  value=st.session_state.get("user_info", {}).get("inspector", ""))
-        part_detail = st.text_input("점검 부위 상세", placeholder="예: 지하주차장 B2층 기둥",
-                                    value=st.session_state.get("user_info", {}).get("part_detail", ""))
-    remarks = st.text_area("비고", placeholder="특이사항이나 추가 메모", height=68,
-                           value=st.session_state.get("user_info", {}).get("remarks", ""))
-
-    # 반영 버튼
-    if st.button("📋 보고서에 반영", type="primary", use_container_width=True):
-        st.session_state["user_info"] = {
-            "facility_name": facility_name.strip() if facility_name else "",
-            "location": location.strip() if location else "",
-            "inspector": inspector.strip() if inspector else "",
-            "part_detail": part_detail.strip() if part_detail else "",
-            "remarks": remarks.strip() if remarks else "",
-        }
-        # 캐시 무효화하여 보고서 재생성
-        st.session_state["cache_key"] = None
-        st.success("정보가 반영되었습니다. 분석이 다시 시작됩니다.")
-        st.rerun()
-
-# 사용자 입력을 세션에 저장 (버튼 클릭 전에도 기본 저장)
-user_info = st.session_state.get("user_info", {
-    "facility_name": facility_name.strip() if facility_name else "",
-    "location": location.strip() if location else "",
-    "inspector": inspector.strip() if inspector else "",
-    "part_detail": part_detail.strip() if part_detail else "",
-    "remarks": remarks.strip() if remarks else "",
-})
-if "user_info" not in st.session_state:
-    st.session_state["user_info"] = user_info
 
 data = up.getvalue()   # 촬영·업로드 공통 (read()와 달리 재호출 안전)
 img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)   # BGR
@@ -236,6 +222,13 @@ if st.session_state.get("cache_key") != cache_key:
 state = st.session_state["state"]
 vis_rgb = st.session_state["vis"]
 
+# ---- 기본현황 표만 업데이트 (탐지/보고서 재생성 없이) ----
+if st.session_state.pop("regenerate_report", False) and state.report is not None:
+    user_info = st.session_state.get("user_info", {})
+    meta = getattr(state.triage, "meta", None) if state.triage else None
+    report.update_basic_info(state.report, user_info, meta)
+    st.session_state["state"] = state
+
 # ---- 1.5) 비전 트리아지 게이트: 재촬영/반려면 여기서 안내하고 멈춤 ----
 if state.stage in (Stage.NEEDS_RETAKE, Stage.REJECTED):
     tri = state.triage
@@ -255,7 +248,7 @@ if state.stage in (Stage.NEEDS_RETAKE, Stage.REJECTED):
 feat, risk, rag_res, rep = state.features, state.risk, state.rag, state.report
 
 # ---- 2) 판정 결과 (세로 스택) ----
-st.subheader("2) 판정 결과")
+st.subheader("3) 판정 결과")
 
 # 탐지 0건 백스톱 — 트리아지는 통과했으나 모델이 아무 결함도 못 잡은 경우.
 #  원거리·전경이면 근접 재촬영을 권고(확신 있는 '정상' 오해 방지). 실제 무결함일 수도 있어 중립적 안내.
@@ -314,8 +307,8 @@ with st.expander("📚 안전기준 근거 (RAG)", expanded=bool(rag_res.evidenc
     else:
         st.info("RAG 지식베이스가 아직 구축되지 않았습니다. build_index 실행 후 표시됩니다.")
 
-# ---- 3) 점검 보고서 초안 (현업 7섹션 서식) ----
-st.subheader("3) 점검 보고서 초안")
+# ---- 4) 점검 보고서 초안 (현업 7섹션 서식) ----
+st.subheader("4) 점검 보고서 초안")
 if rep is None:
     st.info("⚡ 빠른 테스트 모드: 보고서 생성이 생략되었습니다. 사이드바에서 토글을 끄면 보고서가 생성됩니다.")
 else:
@@ -357,94 +350,161 @@ else:
         else:
             st.info("PDF 내보내기: `pip install fpdf2` 필요")
 
-# ---- 4) 대화형 정보 보충 (LangGraph 에이전트) ----
-try:
-    from v3_langgraph import InspectionAgent, is_enabled as agent_is_enabled
-    _agent_available = True
-except ImportError:
-    _agent_available = False
-
-if _agent_available:
+    # 기본현황 정보 수정 버튼
     st.divider()
-    st.subheader("4) 대화형 정보 보충")
-    st.caption("AI 어시스턴트와 대화하며 보고서에 필요한 추가 정보를 입력할 수 있습니다.")
+    with st.expander("✏️ 기본현황 정보 수정", expanded=False):
+        st.caption("분석 후 시설물 정보를 수정하면 보고서 기본현황 표만 업데이트됩니다.")
+        col_e1, col_e2 = st.columns(2)
+        with col_e1:
+            edit_facility = st.text_input("시설물명 ", value=st.session_state.get("user_info", {}).get("facility_name", ""), key="edit_facility")
+            edit_location = st.text_input("위치 ", value=st.session_state.get("user_info", {}).get("location", ""), key="edit_location")
+        with col_e2:
+            edit_inspector = st.text_input("점검자 ", value=st.session_state.get("user_info", {}).get("inspector", ""), key="edit_inspector")
+            edit_part = st.text_input("점검 부위 ", value=st.session_state.get("user_info", {}).get("part_detail", ""), key="edit_part")
+        if st.button("📋 기본현황 표에 반영", type="primary", use_container_width=True):
+            st.session_state["user_info"] = {
+                "facility_name": edit_facility.strip() if edit_facility else "",
+                "location": edit_location.strip() if edit_location else "",
+                "inspector": edit_inspector.strip() if edit_inspector else "",
+                "part_detail": edit_part.strip() if edit_part else "",
+                "remarks": st.session_state.get("user_info", {}).get("remarks", ""),
+            }
+            st.session_state["regenerate_report"] = True
+            st.success("기본현황 표가 업데이트됩니다.")
+            st.rerun()
 
-    # 에이전트 세션 관리
+# ---- 5) 대화형 정보 보충 (Claude 챗봇) ----
+from pipeline.chat_agent import ReportChatAgent, is_available as chat_agent_available
+
+if chat_agent_available() and rep is not None:
+    st.divider()
+    st.subheader("5) 대화형 정보 보충")
+    st.caption("AI 어시스턴트와 대화하며 보고서에 필요한 추가 정보를 수집합니다.")
+
+    # 에이전트 초기화 (보고서 텍스트와 현재 user_info 전달)
     def get_chat_agent():
-        if "chat_agent" not in st.session_state:
-            st.session_state.chat_agent = InspectionAgent()
-            st.session_state.chat_agent_messages = []
-            st.session_state.chat_agent_started = False
-        return st.session_state.chat_agent
+        report_md = rep.to_markdown() if rep else ""
+        current_info = st.session_state.get("user_info", {})
+        agent_key = f"chat_agent_{hash(report_md[:100])}"
 
-    def reset_chat_agent():
-        st.session_state.chat_agent = InspectionAgent()
-        st.session_state.chat_agent_messages = []
-        st.session_state.chat_agent_started = False
+        if agent_key not in st.session_state:
+            st.session_state[agent_key] = ReportChatAgent(report_md, current_info)
+            st.session_state["chat_messages"] = []
+            st.session_state["chat_started"] = False
+            st.session_state["current_agent_key"] = agent_key
+        return st.session_state[agent_key]
+
+    def reset_chat():
+        report_md = rep.to_markdown() if rep else ""
+        current_info = st.session_state.get("user_info", {})
+        agent_key = st.session_state.get("current_agent_key", "chat_agent")
+        st.session_state[agent_key] = ReportChatAgent(report_md, current_info)
+        st.session_state["chat_messages"] = []
+        st.session_state["chat_started"] = False
 
     agent = get_chat_agent()
 
-    # 대화 시작
-    if not st.session_state.get("chat_agent_started"):
-        greeting = agent.start()
-        st.session_state.chat_agent_messages = [{"role": "assistant", "content": greeting}]
-        st.session_state.chat_agent_started = True
+    # 첫 대화 시작 (보고서 분석 후 첫 질문)
+    if not st.session_state.get("chat_started"):
+        with st.spinner("보고서 분석 중..."):
+            greeting = agent.start()
+        st.session_state["chat_messages"] = [{"role": "assistant", "content": greeting}]
+        st.session_state["chat_started"] = True
 
-    # 완료 시 정보 표시 및 적용
-    if agent.is_complete():
-        collected = agent.get_user_info()
-        st.success("정보 수집 완료!")
+    # 보고서 재생성 준비 완료
+    if agent.is_ready_to_regenerate():
+        st.success("추가 정보 수집 완료! 보고서를 재생성할 준비가 되었습니다.")
 
-        with st.expander("수집된 정보", expanded=True):
-            field_names = {
-                "facility_name": "시설물명", "location": "위치", "floor": "층수",
-                "inspector": "점검자", "discovery_time": "발견시점",
-                "detail": "점검부위", "remarks": "비고",
+        collected = agent.get_collected_info()
+        if collected:
+            # 한글 라벨 매핑
+            label_map = {
+                "facility_name": "시설물명",
+                "location": "위치",
+                "inspector": "점검자",
+                "part_detail": "점검 부위",
+                "discovery_time": "발견 시점",
+                "repair_history": "보수 이력",
+                "concerns": "우려사항",
             }
-            for key, value in collected.items():
-                if value:
-                    label = field_names.get(key, key)
-                    st.write(f"**{label}**: {value}")
-
-        col_apply, col_reset = st.columns(2)
-        with col_apply:
-            if st.button("보고서에 적용", type="primary", use_container_width=True):
-                # 수집된 정보를 user_info에 병합
-                merged = st.session_state.get("user_info", {}).copy()
+            with st.expander("수집된 추가 정보", expanded=True):
                 for k, v in collected.items():
                     if v:
-                        if k == "detail":
-                            merged["part_detail"] = v
-                        else:
-                            merged[k] = v
+                        label = label_map.get(k, k)
+                        st.write(f"**{label}**: {v}")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("보고서 재생성", type="primary", use_container_width=True):
+                # 수집된 정보를 user_info에 병합
+                merged = st.session_state.get("user_info", {}).copy()
+
+                # 기본현황 필드 매핑
+                field_mapping = {
+                    "facility_name": "facility_name",
+                    "location": "location",
+                    "inspector": "inspector",
+                    "part_detail": "part_detail",
+                }
+                for collected_key, user_info_key in field_mapping.items():
+                    if collected.get(collected_key) and not merged.get(user_info_key):
+                        merged[user_info_key] = collected[collected_key]
+
+                # 나머지 정보(발견시점, 보수이력, 우려사항)는 remarks에 추가
+                extra_info = []
+                extra_keys = ["discovery_time", "repair_history", "concerns"]
+                for k in extra_keys:
+                    if collected.get(k):
+                        label = {"discovery_time": "발견시점", "repair_history": "보수이력", "concerns": "우려사항"}.get(k, k)
+                        extra_info.append(f"{label}: {collected[k]}")
+                if extra_info:
+                    existing_remarks = merged.get("remarks", "").strip()
+                    merged["remarks"] = (existing_remarks + "\n" + "\n".join(extra_info)).strip()
+
                 st.session_state["user_info"] = merged
-                st.success("정보가 적용되었습니다. 페이지를 새로고침하면 보고서에 반영됩니다.")
-        with col_reset:
+                # 전체 보고서 재생성 플래그
+                st.session_state["cache_key"] = None
+                st.success("보고서를 재생성합니다...")
+                st.rerun()
+        with col2:
             if st.button("새 대화 시작", use_container_width=True):
-                reset_chat_agent()
+                reset_chat()
                 st.rerun()
     else:
         # 대화 기록 표시
-        for msg in st.session_state.get("chat_agent_messages", []):
+        for msg in st.session_state.get("chat_messages", []):
             with st.chat_message(msg["role"]):
                 st.write(msg["content"])
 
         # 사용자 입력
-        if chat_input := st.chat_input("메시지를 입력하세요...", key="agent_chat"):
-            st.session_state.chat_agent_messages.append({"role": "user", "content": chat_input})
-            response = agent.respond(chat_input)
-            st.session_state.chat_agent_messages.append({"role": "assistant", "content": response})
+        if chat_input := st.chat_input("메시지를 입력하세요...", key="claude_chat"):
+            st.session_state["chat_messages"].append({"role": "user", "content": chat_input})
+            with st.chat_message("user"):
+                st.write(chat_input)
+
+            with st.chat_message("assistant"):
+                with st.spinner("생각 중..."):
+                    response = agent.respond(chat_input)
+                st.write(response)
+            st.session_state["chat_messages"].append({"role": "assistant", "content": response})
+
+            # 수집된 정보를 user_info에 즉시 반영 (기본현황 수정 폼과 연동)
+            collected = agent.get_collected_info()
+            if collected:
+                current_user_info = st.session_state.get("user_info", {}).copy()
+                sync_fields = ["facility_name", "location", "inspector", "part_detail"]
+                for field in sync_fields:
+                    if collected.get(field) and not current_user_info.get(field):
+                        current_user_info[field] = collected[field]
+                st.session_state["user_info"] = current_user_info
+
             st.rerun()
 
-        # 사이드바에 에이전트 상태 표시
-        with st.sidebar:
-            st.divider()
-            st.subheader("대화 에이전트")
-            st.write(f"턴: {agent.turn_count}")
-            collected = agent.get_user_info()
-            field_names = {"facility_name": "시설물명", "location": "위치", "floor": "층수",
-                           "inspector": "점검자", "discovery_time": "발견시점",
-                           "detail": "점검부위", "remarks": "비고"}
-            for key, value in collected.items():
-                status = "✅" if value else "⬜"
-                st.write(f"{status} {field_names.get(key, key)}")
+        # 새 대화 버튼
+        if st.button("🔄 대화 초기화", use_container_width=True):
+            reset_chat()
+            st.rerun()
+elif rep is not None:
+    st.divider()
+    st.subheader("5) 대화형 정보 보충")
+    st.info("Claude API 키가 설정되지 않아 대화 기능을 사용할 수 없습니다. config의 ANTHROPIC_API_KEY를 확인해주세요.")

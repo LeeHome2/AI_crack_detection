@@ -69,6 +69,12 @@ def _basic_info(meta=None, user_info=None) -> str:
     )
 
 
+def update_basic_info(report_obj: Report, user_info: dict, meta=None) -> Report:
+    """기본현황 표만 사용자 입력으로 업데이트 (보고서 전체 재생성 없이)."""
+    report_obj.basic_info = _basic_info(meta, user_info)
+    return report_obj
+
+
 def _meta_observation(meta) -> str:
     """트리아지 비전이 읽어낸 균열 양상 소견 한 줄 (점검결과 보강). 없으면 빈 문자열."""
     if not isinstance(meta, dict) or not meta:
